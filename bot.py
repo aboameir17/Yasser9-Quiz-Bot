@@ -105,45 +105,43 @@ async def start_cmd(message: types.Message):
     await message.answer(welcome_txt)
 
 # --- [ أمر تفعيل المشرفين - بناء ياسر ] ---
-@dp.message_handler(lambda m: m.text == "تفعيل")
-async def cmd_request_activation(message: types.Message):
-    if message.chat.type == 'private':
-        return await message.answer("⚠️ هذا الأمر للاستخدام داخل المجموعات فقط.")
-
-    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if not (member.is_chat_admin() or member.is_chat_creator()):
-        return await message.reply("⚠️ عذراً، هذا الأمر خاص بمشرفي المجموعة فقط.")
-
-    status = await get_group_status(message.chat.id)
-    if status == "active": return await message.reply("✅ البート مفعل بالفعل هنا!")
-    if status == "pending": return await message.reply("⏳ طلب التفعيل قيد المراجعة حالياً.")
-    if status == "blocked": return await message.reply("🚫 هذه المجموعة محظورة.")
-
-    # تسجيل الطلب في سوبابيس
-    supabase.table("allowed_groups").upsert({"group_id": message.chat.id, "group_name": message.chat.title, "status": "pending"}).execute()
-    await message.reply("📥 <b>تم إرسال طلب التفعيل للمطور بنجاح.</b>", parse_mode="HTML")
-    
-    # تنبيه المطور (ياسر) بالأزرار
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("✅ موافقة", callback_data=f"auth_approve_{message.chat.id}"),
-        InlineKeyboardButton("❌ حظر", callback_data=f"auth_block_{message.chat.id}")
-    )
-    await bot.send_message(ADMIN_ID, f"🔔 <b>طلب تفعيل جديد!</b>\nالقروب: {message.chat.title}\nID: <code>{message.chat.id}</code>", reply_markup=kb, parse_mode="HTML")
 
 @dp.message_handler(lambda m: m.text == "تحكم")
 async def control_panel(message: types.Message):
-    # قفل الأمان: التحقق من تفعيل القروب قبل فتح اللوحة
-    status = await get_group_status(message.chat.id)
-    if status != "active" and message.chat.id != ADMIN_ID:
-        return await message.reply("⚠️ <b>عذراً، يجب تفعيل المجموعة أولاً.</b>\nأرسل كلمة (تفعيل) لطلب الموافقة من المطور.", parse_mode="HTML")
+    # 1. إذا كان المطور (ياسر) -> افتح اللوحة فوراً في أي مكان
+    if message.from_user.id == ADMIN_ID:
+        pass # سيتجاوز الفحص ويذهب لنهاية الدالة لعرض اللوحة
 
+    # 2. إذا كانت الدردشة "خاص" (Private) والمستخدم ليس المطور
+    elif message.chat.type == 'private':
+        # هنا يمكنك السماح للناس بالدخول للخاص أو منعهم، 
+        # وحسب طلبك سنتركها مفتوحة في الخاص لكي لا تظهر رسالة التفعيل المزعجة هناك.
+        pass
+
+    # 3. إذا كانت "مجموعة" والمستخدم ليس المطور
+    else:
+        status = await get_group_status(message.chat.id)
+        # إذا كانت المجموعة غير مفعلة، نمنع حتى المشرفين من رؤية اللوحة
+        if status != "active":
+            return await message.reply(
+                "⚠️ <b>عذراً، يجب تفعيل المجموعة أولاً بواسطة المطور.</b>\n"
+                "أرسل كلمة (تفعيل) لطلب الموافقة.", 
+                parse_mode="HTML"
+            )
+        
+        # إذا كانت مفعلة، نتأكد أن الذي يطلب "تحكم" هو مشرف
+        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        if not (member.is_chat_admin() or member.is_chat_creator()):
+            return await message.reply("⚠️ هذه اللوحة مخصصة لمشرفي المجموعة فقط.")
+
+    # --- عرض اللوحة (تصل هنا في حال كان مطور، أو في الخاص، أو مشرف في قروب مفعل) ---
     txt = (f"👋 أهلا بك في لوحة أعدادات المسابقات الخاصة \n"
            f"👑 المطور: <b>{OWNER_USERNAME}</b>")
+    
     kb = InlineKeyboardMarkup(row_width=2).add(
         InlineKeyboardButton("📝 إضافة خاصة", callback_data="custom_add"),
         InlineKeyboardButton("📅 جلسة سابقة", callback_data="dev"),
-        InlineKeyboardButton("🏆تجهيز مسابقة", callback_data="setup_quiz"),
+        InlineKeyboardButton("🏆 تجهيز مسابقة", callback_data="setup_quiz"),
         InlineKeyboardButton("📊 لوحة الصدارة", callback_data="leaderboard"),
         InlineKeyboardButton("🛑 إغلاق", callback_data="close_bot")
     )
