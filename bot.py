@@ -188,7 +188,7 @@ async def custom_add_menu(c: types.CallbackQuery, state: FSMContext):
         InlineKeyboardButton("📋 قائمة الأقسام", callback_data="list_cats"),
         # إصلاح زر الرجوع ليعود للوحة التحكم الرئيسية (Control Panel)
         InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data="back_to_control")
-    )
+        
     await c.message.edit_text("⚙️ **لوحة إعدادات أقسامك الخاصة:**\nيمكنك إضافة أقسام جديدة أو إدارة الأقسام الحالية.", reply_markup=kb, parse_mode="Markdown")
 
 @dp.callback_query_handler(lambda c: c.data == 'add_new_cat', state="*")
