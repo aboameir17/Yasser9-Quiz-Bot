@@ -90,6 +90,19 @@ class Form(StatesGroup):
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
 
+# --- [ الدوال المساعدة - الكيبوردات ] ---
+
+def get_main_control_kb(user_id):
+    """توليد كيبورد لوحة التحكم مع قفلها بآيدي المستخدم لضمان الأمان"""
+    kb = InlineKeyboardMarkup(row_width=2).add(
+        InlineKeyboardButton("📝 إضافة خاصة", callback_data=f"custom_add_{user_id}"),
+        InlineKeyboardButton("📅 جلسة سابقة", callback_data=f"dev_session_{user_id}"),
+        InlineKeyboardButton("🏆 تجهيز مسابقة", callback_data=f"setup_quiz_{user_id}"),
+        InlineKeyboardButton("📊 لوحة الصدارة", callback_data=f"dev_leaderboard_{user_id}"),
+        InlineKeyboardButton("🛑 إغلاق", callback_data=f"close_bot_{user_id}")
+    )
+    return kb
+
 # --- 1. الأوامر الأساسية ونظام التفعيل الاحترافي ---
 
 @dp.message_handler(commands=['start'])
@@ -104,6 +117,12 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(welcome_txt)
 
+# الآن يأتي أمر "تحكم" الذي يستدعي الدالة الموجودة بالأعلى
+@dp.message_handler(lambda m: m.text == "تحكم")
+async def control_panel(message: types.Message):
+    # ... (بقية الكود الذي يفرز المطور والمشرفين) ...
+    user_id = message.from_user.id
+    await message.answer("👋 أهلاً بك في لوحة الإعدادات", reply_markup=get_main_control_kb(user_id))
 # --- [ أمر تفعيل المشرفين - بناء ياسر ] ---
 
 @dp.message_handler(lambda m: m.text == "تحكم")
