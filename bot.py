@@ -31,19 +31,9 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # قاموس المسابقات النشطة
 active_quizzes = {}
 
-# --- [ 4. الدوال المساعدة ] ---
-async def get_group_status(chat_id):
-    """فحص حالة تفعيل المجموعة في قاعدة البيانات"""
-    try:
-        res = supabase.table("allowed_groups").select("status").eq("group_id", chat_id).execute()
-        if res.data and len(res.data) > 0:
-            return res.data[0]['status']
-        return None 
-    except Exception as e:
-        logging.error(f"خطأ في فحص حالة المجموعة: {e}")
-        return None
-        
-# --- [ 2.  حرك استدعاء قالب الاجابة والنتائج  ] ---
+# ==========================================
+# --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
+# ==========================================
 async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
     """تصميم ياسر المطور: دمج الفائزين والترتيب في رسالة واحدة"""
     msg =  "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n"
@@ -81,19 +71,13 @@ async def send_final_results(chat_id, overall_scores, correct_count):
     msg += "تهانينا للفائزين وحظاً أوفر لمن لم يحالفه الحظ! ❤️"
     await bot.send_message(chat_id, msg, parse_mode="HTML")
 
+
+# ==========================================
+# 1. كيبوردات التحكم الرئيسية (Main Keyboards)
 # ==========================================
 
-class Form(StatesGroup):
-    waiting_for_cat_name = State()
-    waiting_for_question = State()
-    waiting_for_ans1 = State()
-    waiting_for_ans2 = State()
-    waiting_for_new_cat_name = State()
-
-# --- [ الدوال المساعدة - الكيبوردات ] ---
-
 def get_main_control_kb(user_id):
-    """توليد كيبورد لوحة التحكم مع قفلها بآيدي المستخدم لضمان الأمان"""
+    """توليد كيبورد لوحة التحكم الرئيسية مشفرة بآيدي المستخدم"""
     kb = InlineKeyboardMarkup(row_width=2).add(
         InlineKeyboardButton("📝 إضافة خاصة", callback_data=f"custom_add_{user_id}"),
         InlineKeyboardButton("📅 جلسة سابقة", callback_data=f"dev_session_{user_id}"),
@@ -102,6 +86,75 @@ def get_main_control_kb(user_id):
         InlineKeyboardButton("🛑 إغلاق", callback_data=f"close_bot_{user_id}")
     )
     return kb
+
+def get_categories_kb(user_id):
+    """توليد كيبورد إدارة الأقسام مع الحماية"""
+    kb = InlineKeyboardMarkup(row_width=1).add(
+        InlineKeyboardButton("➕ إضافة قسم جديد", callback_data=f"add_new_cat_{user_id}"),
+        InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_cats_{user_id}"),
+        InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_control_{user_id}")
+    )
+    return kb
+
+# ==========================================
+# 2. دوال عرض الواجهات الموحدة (UI Controllers)
+# ==========================================
+
+async def show_category_settings_ui(message: types.Message, cat_id, owner_id, is_edit=True):
+    """الدالة الموحدة لعرض إعدادات القسم بضغطة واحدة"""
+    # جلب البيانات من سوبابيس
+    cat_res = supabase.table("categories").select("name").eq("id", cat_id).single().execute()
+    q_res = supabase.table("questions").select("*", count="exact").eq("category_id", cat_id).execute()
+    
+    cat_name = cat_res.data['name']
+    q_count = q_res.count if q_res.count else 0
+
+    txt = (f"⚙️ **إعدادات القسم: {cat_name}**\n\n"
+           f"📊 عدد الأسئلة المضافة: {q_count}\n"
+           f"ماذا تريد أن تفعل الآن؟")
+
+    # بناء الأزرار وتشفيرها بالآيدي المزدوج (cat_id + owner_id)
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("➕ إضافة سؤال", callback_data=f"add_q_{cat_id}_{owner_id}"),
+        InlineKeyboardButton("📝 تعديل الاسم", callback_data=f"edit_cat_{cat_id}_{owner_id}")
+    )
+    kb.add(
+        InlineKeyboardButton("🔍 عرض الأسئلة", callback_data=f"view_qs_{cat_id}_{owner_id}"),
+        InlineKeyboardButton("🗑️ حذف الأسئلة", callback_data=f"del_qs_menu_{cat_id}_{owner_id}")
+    )
+    kb.add(InlineKeyboardButton("❌ حذف القسم", callback_data=f"confirm_del_cat_{cat_id}_{owner_id}"))
+    kb.add(
+        InlineKeyboardButton("🔙 رجوع", callback_data=f"list_cats_{owner_id}"),
+        InlineKeyboardButton("🏠 الرئيسية", callback_data=f"back_to_control_{owner_id}")
+    )
+    
+    if is_edit:
+        await message.edit_text(txt, reply_markup=kb, parse_mode="Markdown")
+    else:
+        # تستخدم هذه بعد الـ message_handler (save_cat) لأن الرسالة السابقة قد حذفت
+        await message.answer(txt, reply_markup=kb, parse_mode="Markdown")
+
+# ==========================================
+# 3. دوال الفحص الأمني (Security Helpers)
+# ==========================================
+
+async def get_group_status(chat_id):
+    """فحص حالة تفعيل المجموعة في قاعدة البيانات"""
+    try:
+        res = supabase.table("allowed_groups").select("status").eq("group_id", chat_id).execute()
+        return res.data[0]['status'] if res.data else "not_found"
+    except:
+        return "error"
+        
+# ==========================================
+
+class Form(StatesGroup):
+    waiting_for_cat_name = State()
+    waiting_for_question = State()
+    waiting_for_ans1 = State()
+    waiting_for_ans2 = State()
+    waiting_for_new_cat_name = State()
 
 # --- 1. الأوامر الأساسية ونظام التفعيل الاحترافي ---
 
