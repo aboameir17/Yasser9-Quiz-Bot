@@ -983,46 +983,46 @@ async def final_quiz_settings_panel(c: types.CallbackQuery, state: FSMContext):
     await render_final_settings_panel(c.message, data, owner_id)
 
 
-# --- 5. المحركات الموحدة (تم دمج 5 دوال في دالة واحدة ذكية) ---
-@dp.callback_query_handler(lambda c: c.data.startswith(('tog_broad_', 'cyc_hint_', 'cyc_time_', 'cyc_mode_', 'set_cnt_')), state="*")
+# --- 5. المحركات الموحدة (المصلحة والسريرعة) ---
+@dp.callback_query_handler(lambda c: c.data.startswith(('tog_', 'cyc_', 'set_')), state="*")
 async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
-    action = data_parts[0] # tog, cyc, set
+    action = data_parts[0] # tog أو cyc أو set
     owner_id = int(data_parts[-1])
     
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ لا تتدخل في إعدادات غيرك! 😂", show_alert=True)
 
+    await c.answer() # لإزالة علامة الساعة بسرعة
     data = await state.get_data()
     
-    # محرك النطاق (إذاعة/داخلي)
-    if action == 'tog':
+    # 1️⃣ محرك النطاق (إذاعة/داخلي) -> tog_broad_ID
+    if action == 'tog' and data_parts[1] == 'broad':
         await state.update_data(is_broadcast=not data.get('is_broadcast', False))
     
-    # محرك التلميح
+    # 2️⃣ محرك التلميح -> cyc_hint_ID
     elif action == 'cyc' and data_parts[1] == 'hint':
         await state.update_data(quiz_hint_bool=not data.get('quiz_hint_bool', False))
     
-    # محرك الوقت
+    # 3️⃣ محرك الوقت -> cyc_time_ID
     elif action == 'cyc' and data_parts[1] == 'time':
         curr = data.get('quiz_time', 15)
         next_t = 20 if curr == 15 else (30 if curr == 20 else (45 if curr == 30 else 15))
         await state.update_data(quiz_time=next_t)
         
-    # محرك النظام (سرعة/كامل)
+    # 4️⃣ محرك النظام (سرعة/كامل) -> cyc_mode_ID
     elif action == 'cyc' and data_parts[1] == 'mode':
         curr_m = data.get('quiz_mode', 'السرعة ⚡')
         next_m = 'الوقت الكامل ⏳' if curr_m == 'السرعة ⚡' else 'السرعة ⚡'
         await state.update_data(quiz_mode=next_m)
 
-    # محرك عدد الأسئلة
+    # 5️⃣ محرك عدد الأسئلة -> set_cnt_VALUE_ID
     elif action == 'set' and data_parts[1] == 'cnt':
         await state.update_data(quiz_count=int(data_parts[2]))
 
-    # بعد كل عملية.. نحدث اللوحة فوراً
+    # 🔄 تحديث اللوحة فوراً بالبيانات الجديدة
     new_data = await state.get_data()
     await render_final_settings_panel(c.message, new_data, owner_id)
-
 
 # --- 6. معالج الحفظ (طلب الاسم) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('start_quiz_'), state="*")
