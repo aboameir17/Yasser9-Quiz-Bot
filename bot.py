@@ -134,7 +134,32 @@ async def show_category_settings_ui(message: types.Message, cat_id, owner_id, is
     else:
         # تستخدم هذه بعد الـ message_handler (save_cat) لأن الرسالة السابقة قد حذفت
         await message.answer(txt, reply_markup=kb, parse_mode="Markdown")
+# ==========================================
+# ==========================================
+def get_setup_quiz_kb(user_id):
+    """كيبورد تهيئة المسابقة مشفر بآيدي المستخدم"""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton("👥 أقسام الأعضاء (إبداعات الآخرين)", callback_data=f"members_setup_step1_{user_id}"),
+        InlineKeyboardButton("👤 أقسامك الخاصة (مكتبتي)", callback_data=f"my_setup_step1_{user_id}"),
+        InlineKeyboardButton("🤖 أقسام البوت (الرسمية)", callback_data=f"bot_setup_step1_{user_id}"),
+        # تم الإصلاح ليعود للوحة التحكم الرئيسية الخاصة بك
+        InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
+    )
+    return kb
 
+def generate_members_keyboard(members, selected_list, user_id):
+    """كيبورد اختيار الأعضاء مع حماية المبعسسين"""
+    kb = InlineKeyboardMarkup(row_width=2)
+    for m in members:
+        m_id = str(m['user_id'])
+        mark = "✅ " if m_id in selected_list else ""
+        # نمرر آيدي المستخدم في نهاية الكولباك لضمان الحماية في الخطوة القادمة
+        kb.insert(InlineKeyboardButton(f"{mark}{m['name']}", callback_data=f"toggle_mem_{m_id}_{user_id}"))
+    
+    kb.add(InlineKeyboardButton("➡️ التالي (اختيار الأقسام)", callback_data=f"go_to_cats_selection_{user_id}"))
+    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{user_id}"))
+    return kb
 # ==========================================
 # 3. دوال الفحص الأمني (Security Helpers)
 # ==========================================
