@@ -224,49 +224,84 @@ async def process_auth_callback(callback_query: types.CallbackQuery):
         # إشعار القروب (اختياري)
         await bot.send_message(target_id, "🚫 **نعتذر، تم رفض طلب تفعيل البوت في هذا القروب.**")
 
-# --- 2. إدارة الأقسام والأسئلة ---
-@dp.callback_query_handler(lambda c: c.data == 'custom_add', state="*")
-async def custom_add_menu(c: types.CallbackQuery, state: FSMContext):
-    await state.finish() # إنهاء أي حالة سابقة لضمان عمل الأزرار
-    kb = InlineKeyboardMarkup(row_width=1).add(
-        InlineKeyboardButton("➕ إضافة قسم جديد", callback_data="add_new_cat"),
-        InlineKeyboardButton("📋 قائمة الأقسام", callback_data="list_cats"),
-        # إصلاح زر الرجوع ليعود للوحة التحكم الرئيسية (Control Panel)
-        InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data="back_to_control")
-        
-    await c.message.edit_text("⚙️ **لوحة إعدادات أقسامك الخاصة:**\nيمكنك إضافة أقسام جديدة أو إدارة الأقسام الحالية.", reply_markup=kb, parse_mode="Markdown")
+# --- 2. إدارة الأقسام والأسئلة (نسخة محمية بآيدي المستخدم) ---
 
-@dp.callback_query_handler(lambda c: c.data == 'add_new_cat', state="*")
+@dp.callback_query_handler(lambda c: c.data.startswith('custom_add'), state="*")
+async def custom_add_menu(c: types.CallbackQuery, state: FSMContext):
+    await state.finish()
+    # استخراج الآيدي من الكولباك (إذا كان موجوداً) أو استخدامه من الشخص الذي ضغط
+    data_parts = c.data.split('_')
+    owner_id = int(data_parts[-1]) if len(data_parts) > 1 else c.from_user.id
+
+    # حماية من المبعسسين
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ هذي اللوحة مش حقك! 😂", show_alert=True)
+
+    # استخدام دالة الكيبورد الموحدة للأقسام (التي مررنا لها الآيدي)
+    kb = InlineKeyboardMarkup(row_width=1).add(
+        InlineKeyboardButton("➕ إضافة قسم جديد", callback_data=f"add_new_cat_{owner_id}"),
+        InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_cats_{owner_id}"),
+        InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_control_{owner_id}")
+    )
+    
+    await c.message.edit_text(
+        "⚙️ **لوحة إعدادات أقسامك الخاصة:**\nيمكنك إضافة أقسام جديدة أو إدارة الأقسام الحالية.", 
+        reply_markup=kb, 
+        parse_mode="Markdown"
+    )
+    await c.answer()
+
+@dp.callback_query_handler(lambda c: c.data.startswith('add_new_cat'), state="*")
 async def btn_add_cat(c: types.CallbackQuery):
+    owner_id = int(c.data.split('_')[-1])
+    
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ لا يمكنك الإضافة في لوحة غيرك!", show_alert=True)
+
     await c.answer() 
     await Form.waiting_for_cat_name.set()
-    # زر تراجع في حال غير المستخدم رأيه أثناء الكتابة
-    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("🚫 إلغاء", callback_data="custom_add"))
-    await c.message.answer("📝 **اكتب اسم القسم الجديد:**\nمثال: (ثقافة عامة، تاريخ، رياضة...)", reply_markup=kb, parse_mode="Markdown")
+    
+    # زر إلغاء محمي يعود للأقسام بالآيدي الصحيح
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("🚫 إلغاء", callback_data=f"custom_add_{owner_id}")
+    )
+    await c.message.answer("📝 **اكتب اسم القسم الجديد:**", reply_markup=kb, parse_mode="Markdown")
 
 @dp.message_handler(state=Form.waiting_for_cat_name)
 async def save_cat(message: types.Message, state: FSMContext):
     cat_name = message.text.strip()
+    user_id = message.from_user.id
     try:
-        # 1. إدراج القسم في قاعدة البيانات
+        # 1. إدراج القسم في قاعدة البيانات مع ربطه بآيدي المستخدم
         supabase.table("categories").insert({
             "name": cat_name, 
-            "created_by": str(message.from_user.id)
+            "created_by": str(user_id)
         }).execute()
         
         await state.finish()
         
-        # 2. رسالة نجاح مع أزرار سريعة للعودة أو إضافة المزيد
+        # 2. أزرار نجاح محمية بالكامل
         kb = InlineKeyboardMarkup(row_width=2).add(
-            InlineKeyboardButton("➕ إضافة قسم آخر", callback_data="add_new_cat"),
-            InlineKeyboardButton("🔙 العودة للأقسام", callback_data="custom_add")
+            InlineKeyboardButton("➕ إضافة قسم آخر", callback_data=f"add_new_cat_{user_id}"),
+            InlineKeyboardButton("🔙 العودة للأقسام", callback_data=f"custom_add_{user_id}")
         )
         await message.answer(f"✅ تم حفظ القسم **'{cat_name}'** بنجاح.", reply_markup=kb, parse_mode="Markdown")
 
     except Exception as e:
         logging.error(f"Error saving category: {e}")
-        await message.answer("❌ عذراً، حدث خطأ أثناء حفظ القسم. تأكد أن الاسم غير مكرر.")
+        await state.finish()
         
+        # في حال الخطأ، نعرض له أقسامه فقط مع أزرار محمية
+        res = supabase.table("categories").select("*").eq("created_by", str(user_id)).execute()
+        categories = res.data
+
+        kb = InlineKeyboardMarkup(row_width=1)
+        if categories:
+            for cat in categories:
+                kb.add(InlineKeyboardButton(f"📂 {cat['name']}", callback_data=f"manage_questions_{cat['id']}_{user_id}"))
+
+        kb.add(InlineKeyboardButton("⬅️ الرجوع", callback_data=f"custom_add_{user_id}"))
+        await message.answer("❌ الاسم مكرر أو حدث خطأ. إليك أقسامك الحالية:", reply_markup=kb)
         # 1. جلب معرف المستخدم لفلترة الأقسام فوراً
         user_id = str(message.from_user.id)
         
