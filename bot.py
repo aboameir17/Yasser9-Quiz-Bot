@@ -371,68 +371,65 @@ async def save_cat(message: types.Message, state: FSMContext):
         logging.error(f"Error: {e}")
         await message.answer("⚠️ حدث خطأ أثناء الحفظ، جرب مرة أخرى.")
         
-# 1. نافذة إعدادات القسم عند الضغط على اسمه
+# --- 1. نافذة إعدادات القسم (عند الضغط على اسمه) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('manage_questions_'))
 async def manage_questions_window(c: types.CallbackQuery):
+    # تفكيك البيانات: manage_questions_ID_USERID
+    data = c.data.split('_')
+    cat_id = data[2]
+    owner_id = int(data[3])
+
+    # حماية من المبعسسين
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ هذه اللوحة ليست لك!", show_alert=True)
+
     await c.answer()
-    cat_id = c.data.split('_')[-1]
-    
-    # جلب معلومات القسم وعدد الأسئلة
-    cat_res = supabase.table("categories").select("name").eq("id", cat_id).single().execute()
-    q_res = supabase.table("questions").select("*", count="exact").eq("category_id", cat_id).execute()
-    
-    cat_name = cat_res.data['name']
-    q_count = q_res.count if q_res.count else 0
+    # استدعاء الدالة الموحدة
+    await show_category_settings_ui(c.message, cat_id, owner_id, is_edit=True)
 
-    txt = (f"⚙️ **إعدادات القسم: {cat_name}**\n\n"
-           f"📊 عدد الأسئلة المضافة: {q_count}\n"
-           f"ماذا تريد أن تفعل الآن؟")
 
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        InlineKeyboardButton("➕ إضافة سؤال مباشر", callback_data=f"add_q_{cat_id}"),
-        InlineKeyboardButton("📝 تعديل اسم القسم", callback_data=f"edit_cat_{cat_id}")
-    )
-    kb.add(
-        InlineKeyboardButton("🔍 عرض الأسئلة", callback_data=f"view_qs_{cat_id}"),
-        InlineKeyboardButton("🗑️ حذف الأسئلة", callback_data=f"del_qs_menu_{cat_id}")
-    )
-    kb.add(InlineKeyboardButton("❌ حذف القسم", callback_data=f"confirm_del_cat_{cat_id}"))
-    kb.add(
-        InlineKeyboardButton("🔙 رجوع", callback_data="list_cats"),
-        InlineKeyboardButton("🏠 التحكم الرئيسية", callback_data="back_to_control")
-    )
-    
-    await c.message.edit_text(txt, reply_markup=kb)
-    # --- 1. تعديل اسم القسم (تعديل الرسالة الحالية) ---
+# --- 2. بدء تعديل اسم القسم ---
 @dp.callback_query_handler(lambda c: c.data.startswith('edit_cat_'))
 async def edit_category_start(c: types.CallbackQuery, state: FSMContext):
+    data = c.data.split('_')
+    cat_id = data[2]
+    owner_id = int(data[3])
+
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ لا تملك صلاحية التعديل!", show_alert=True)
+
     await c.answer()
-    cat_id = c.data.split('_')[-1]
-    await state.update_data(edit_cat_id=cat_id)
+    await state.update_data(edit_cat_id=cat_id, edit_owner_id=owner_id)
     await Form.waiting_for_new_cat_name.set()
     
-    # هنا السر: نقوم بتعديل نفس الرسالة بدلاً من إرسال رسالة جديدة
-    await c.message.edit_text("📝 **نظام التعديل:**\n\nأرسل الآن الاسم الجديد للقسم:")
-    
-# --- 1. تعديل اسم القسم المطور (مع حذف الرسالة والرجوع التلقائي) ---
+    # زر تراجع ذكي يعود لصفحة الإعدادات
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("🚫 تراجع", callback_data=f"manage_questions_{cat_id}_{owner_id}")
+    )
+    await c.message.edit_text("📝 **نظام التعديل:**\n\nأرسل الآن الاسم الجديد للقسم:", reply_markup=kb)
+
+
+# --- 3. حفظ الاسم الجديد (استدعاء الدالة الموحدة بعد الحفظ) ---
 @dp.message_handler(state=Form.waiting_for_new_cat_name)
 async def save_edited_category(message: types.Message, state: FSMContext):
     data = await state.get_data()
     cat_id = data['edit_cat_id']
-    new_name = message.text
+    owner_id = data['edit_owner_id']
+    new_name = message.text.strip()
     
     # تحديث الاسم في Supabase
     supabase.table("categories").update({"name": new_name}).eq("id", cat_id).execute()
     
-    # تنظيف الشات: حذف رسالة المستخدم "الاسم الجديد"
-    try:
-        await message.delete()
-    except:
-        pass
+    # تنظيف الشات
+    try: await message.delete()
+    except: pass
 
     await state.finish()
     
+    # الاستدعاء الذكي: نرسل رسالة جديدة (is_edit=False) لأننا حذفنا رسالة المستخدم
+    # ونعرض لوحة الإعدادات بالاسم الجديد فوراً
+    await show_category_settings_ui(message, cat_id, owner_id, is_edit=False)
+
 # ==========================================
 # ==========================================
 
