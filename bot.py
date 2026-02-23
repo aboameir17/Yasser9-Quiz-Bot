@@ -117,55 +117,52 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(welcome_txt)
 
-# الآن يأتي أمر "تحكم" الذي يستدعي الدالة الموجودة بالأعلى
+# --- [ أمر التحكم الرئيسي - بعد أمر start مباشرة ] ---
+
 @dp.message_handler(lambda m: m.text == "تحكم")
 async def control_panel(message: types.Message):
-    # ... (بقية الكود الذي يفرز المطور والمشرفين) ...
     user_id = message.from_user.id
-    await message.answer("👋 أهلاً بك في لوحة الإعدادات", reply_markup=get_main_control_kb(user_id))
-# --- [ أمر تفعيل المشرفين - بناء ياسر ] ---
-
-@dp.message_handler(lambda m: m.text == "تحكم")
-async def control_panel(message: types.Message):
-    # 1. إذا كان المطور (ياسر) -> افتح اللوحة فوراً في أي مكان
-    if message.from_user.id == ADMIN_ID:
-        pass # سيتجاوز الفحص ويذهب لنهاية الدالة لعرض اللوحة
-
-    # 2. إذا كانت الدردشة "خاص" (Private) والمستخدم ليس المطور
-    elif message.chat.type == 'private':
-        # هنا يمكنك السماح للناس بالدخول للخاص أو منعهم، 
-        # وحسب طلبك سنتركها مفتوحة في الخاص لكي لا تظهر رسالة التفعيل المزعجة هناك.
-        pass
-
-    # 3. إذا كانت "مجموعة" والمستخدم ليس المطور
+    
+    
+    # الحالة الأولى: إذا كانت الدردشة "خاص" (Private)
+    if message.chat.type == 'private':
+        # في الخاص، البوت يفتح اللوحة فوراً للمستخدم لأنها دردشة شخصية
+        pass 
+    
+    # الحالة الثانية: إذا كانت الدردشة "مجموعة" (Group/Supergroup)
     else:
-        status = await get_group_status(message.chat.id)
-        # إذا كانت المجموعة غير مفعلة، نمنع حتى المشرفين من رؤية اللوحة
-        if status != "active":
-            return await message.reply(
-                "⚠️ <b>عذراً، يجب تفعيل المجموعة أولاً بواسطة المطور.</b>\n"
-                "أرسل كلمة (تفعيل) لطلب الموافقة.", 
-                parse_mode="HTML"
-            )
         
-        # إذا كانت مفعلة، نتأكد أن الذي يطلب "تحكم" هو مشرف
-        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if not (member.is_chat_admin() or member.is_chat_creator()):
-            return await message.reply("⚠️ هذه اللوحة مخصصة لمشرفي المجموعة فقط.")
+        if user_id == ADMIN_ID:
+            pass
+        else:
+            # ثانياً: فحص حالة تفعيل المجموعة من قاعدة البيانات
+            status = await get_group_status(message.chat.id)
+            
+            # إذا لم تكن المجموعة مفعلة، نمنع الجميع حتى المشرفين
+            if status != "active":
+                return await message.reply(
+                    "⚠️ <b>عذراً، يجب تفعيل المجموعة أولاً بواسطة المطور.</b>\n"
+                    "أرسل كلمة (تفعيل) لطلب الموافقة.", 
+                    parse_mode="HTML"
+                )
+            
+            # ثالثاً: إذا كانت مفعلة، نتأكد أن الذي أرسل الأمر "مشرف"
+            member = await bot.get_chat_member(message.chat.id, user_id)
+            if not (member.is_chat_admin() or member.is_chat_creator()):
+                return await message.reply("⚠️ هذه اللوحة مخصصة لمشرفي المجموعة فقط.")
 
-    # --- عرض اللوحة (تصل هنا في حال كان مطور، أو في الخاص، أو مشرف في قروب مفعل) ---
+    # --- [ استدعاء اللوحة الذكية ] ---
+    # هنا يتم استدعاء الدالة get_main_control_kb وتمرير user_id لها
+    # لضمان أن صاحب اللوحة فقط هو من يتحكم بالأزرار
+    
     txt = (f"👋 أهلا بك في لوحة أعدادات المسابقات الخاصة \n"
            f"👑 المطور: <b>{OWNER_USERNAME}</b>")
     
-    kb = InlineKeyboardMarkup(row_width=2).add(
-        InlineKeyboardButton("📝 إضافة خاصة", callback_data="custom_add"),
-        InlineKeyboardButton("📅 جلسة سابقة", callback_data="dev"),
-        InlineKeyboardButton("🏆 تجهيز مسابقة", callback_data="setup_quiz"),
-        InlineKeyboardButton("📊 لوحة الصدارة", callback_data="leaderboard"),
-        InlineKeyboardButton("🛑 إغلاق", callback_data="close_bot")
+    await message.answer(
+        txt, 
+        reply_markup=get_main_control_kb(user_id), 
+        disable_web_page_preview=True
     )
-    await message.answer(txt, reply_markup=kb, disable_web_page_preview=True)
-
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
 @dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
 async def process_auth_callback(callback_query: types.CallbackQuery):
