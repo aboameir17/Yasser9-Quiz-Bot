@@ -316,7 +316,9 @@ async def control_panel(message: types.Message, user_id: int = None):
         reply_markup=get_main_control_kb(user_id), 
         disable_web_page_preview=True
     )
-# 1. أضفنا 'back_' هنا في البداية عشان المعالج يحس بالضغطة
+    
+# ==========================================
+# التعديل في السطر 330 (أضفنا close_bot_)
 @dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_', 'back_')), state="*")
 async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
@@ -327,23 +329,27 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ لا تلمس أزرار غيرك! 😂", show_alert=True)
 
-    # 🔙 [ معالج زر الرجوع للقائمة الرئيسية ]
-    if action == "back":
-        await state.finish() # إنهاء أي حالة إدخال كانت مفتوحة
+    # 1️⃣ [ زر الإغلاق ] - فحص الكلمة بالكامل أو أول جزء
+    if action == "close":
+        await c.answer("تم إغلاق اللوحة ✅")
+        return await c.message.delete()
+
+    # 2️⃣ [ زر الرجوع ]
+    elif action == "back":
+        await state.finish()
         await c.answer("🔙 جاري العودة...")
-        await control_panel(c.message, owner_id)
-        return
+        return await control_panel(c.message, owner_id)
 
-    # 📝 [ زر إضافة خاصة ]
-    if action == "custom":
+    # 3️⃣ [ زر إضافة خاصة ]
+    elif action == "custom":
         await c.answer()
-        await custom_add_menu(c, owner_id, state)
+        return await custom_add_menu(c, owner_id, state)
 
-    # 🏆 [ زر تجهيز المسابقة ]
+    # 4️⃣ [ زر تجهيز المسابقة ]
     elif action == "setup":
         await c.answer()
         keyboard = get_setup_quiz_kb(owner_id)
-        await c.message.edit_text(
+        return await c.message.edit_text(
             "🏆 **مرحباً بك في معمل تجهيز المسابقات!**\n\nمن أين تريد جلب الأسئلة لمسابقتك؟",
             reply_markup=keyboard,
             parse_mode="Markdown"
