@@ -187,7 +187,51 @@ async def render_categories_list(message, eligible_cats, selected_cats, owner_id
     
     kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{owner_id}"))
     await message.edit_text("📂 **اختر الأقسام:**", reply_markup=kb)
+# ==========================================
+# ==========================================
+async def render_final_settings_panel(message, data, owner_id):
+    """الدالة الموحدة لعرض لوحة الإعدادات النهائية مشفرة بآيدي المالك"""
+    q_time = data.get('quiz_time', 15)
+    q_count = data.get('quiz_count', 10)
+    q_mode = data.get('quiz_mode', 'السرعة ⚡')
+    is_hint = data.get('quiz_hint_bool', False)
+    is_broadcast = data.get('is_broadcast', False)
+    
+    q_hint_text = "مفعل ✅" if is_hint else "معطل ❌"
+    q_scope_text = "إذاعة عامة 🌐" if is_broadcast else "مسابقة داخلية 📍"
+    
+    text = (
+       f"⚙️ **لوحة تشطيب المسابقة النهائية**\n"
+       f"━━━━━━━━━━━━━━━━━━━\n"
+       f"📊 عدد الأسئلة: {q_count}\n"
+       f"📡 النطاق: {q_scope_text}\n"
+       f"🔖 النظام: {q_mode}\n"
+       f"⏳ المهلة: {q_time} ثانية\n"
+       f"💡 التلميح: {q_hint_text}\n"
+       f"━━━━━━━━━━━━━━━━━━━\n"
+       f"⚠️ *هذه الإعدادات خاصة بـ {data.get('owner_name', 'المنظم')} فقط*"
+    )
 
+    kb = InlineKeyboardMarkup(row_width=5)
+    
+    # 1. أزرار الأعداد
+    kb.row(InlineKeyboardButton("📊 اختر عدد الأسئلة:", callback_data="ignore"))
+    counts = [10, 15, 25, 32, 45]
+    btn_counts = [InlineKeyboardButton(f"{'✅' if q_count==n else ''}{n}", callback_data=f"set_cnt_{n}_{owner_id}") for n in counts]
+    kb.add(*btn_counts)
+
+    # 2. أزرار التحكم (مشفره بالـ owner_id)
+    kb.row(InlineKeyboardButton(f"⏱️ المهلة: {q_time} ثانية", callback_data=f"cyc_time_{owner_id}"))
+    kb.row(
+        InlineKeyboardButton(f"🔖 {q_mode}", callback_data=f"cyc_mode_{owner_id}"),
+        InlineKeyboardButton(f"💡 التلميح: {q_hint_text}", callback_data=f"cyc_hint_{owner_id}")
+    )
+    kb.row(InlineKeyboardButton(f"📡 النطاق: {q_scope_text}", callback_data=f"tog_broad_{owner_id}"))
+    
+    kb.row(InlineKeyboardButton("🚀 حفظ وبدء المسابقة 🚀", callback_data=f"start_quiz_{owner_id}"))
+    kb.row(InlineKeyboardButton("❌ إلغاء", callback_data=f"setup_quiz_{owner_id}"))
+    
+    await message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
 # ==========================================
 # 3. دوال الفحص الأمني (Security Helpers)
 # ==========================================
