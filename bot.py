@@ -933,112 +933,70 @@ async def toggle_category_selection(c: types.CallbackQuery, state: FSMContext):
     await c.answer()
     await render_categories_list(c.message, eligible, selected, owner_id)
 
-# --- 4. لوحة الإعدادات (نسخة التشطيب النهائي - ياسر) ---
-@dp.callback_query_handler(lambda c: c.data == "final_quiz_settings", state="*")
+# --- 4. لوحة الإعدادات (استدعاء دالة المساعدة) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('final_quiz_settings'), state="*")
 async def final_quiz_settings_panel(c: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    # جلب owner_id من البيانات المخزنة لضمان الحماية
+    owner_id = data.get('current_owner_id') or c.from_user.id
+    
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ هذه اللوحة محمية لصاحب المسابقة!", show_alert=True)
+    
     await c.answer()
+    # استدعاء دالة العرض من قسم المساعدة
+    await render_final_settings_panel(c.message, data, owner_id)
+
+
+# --- 5. المحركات الموحدة (تم دمج 5 دوال في دالة واحدة ذكية) ---
+@dp.callback_query_handler(lambda c: c.data.startswith(('tog_broad_', 'cyc_hint_', 'cyc_time_', 'cyc_mode_', 'set_cnt_')), state="*")
+async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
+    data_parts = c.data.split('_')
+    action = data_parts[0] # tog, cyc, set
+    owner_id = int(data_parts[-1])
+    
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ لا تتدخل في إعدادات غيرك! 😂", show_alert=True)
+
     data = await state.get_data()
     
-    # جلب القيم مع تعيين الافتراضيات
-    q_time = data.get('quiz_time', 15)
-    q_count = data.get('quiz_count', 10)
-    q_mode = data.get('quiz_mode', 'السرعة ⚡')
-    # إصلاح التلميح: نتأكد أنه يحفظ كقيمة منطقية (True/False) لتسهيل عمل المحرك لاحقاً
-    is_hint_enabled = data.get('quiz_hint_bool', False)
-    q_hint_text = "مفعل ✅" if is_hint_enabled else "معطل ❌"
+    # محرك النطاق (إذاعة/داخلي)
+    if action == 'tog':
+        await state.update_data(is_broadcast=not data.get('is_broadcast', False))
     
-    # تعديل النطاق (نظام الإذاعة)
-    is_broadcast = data.get('is_broadcast', False)
-    q_scope_text = "إذاعة عامة (كل القروبات) 🌐" if is_broadcast else "مسابقة داخلية (هذا القروب) 📍"
+    # محرك التلميح
+    elif action == 'cyc' and data_parts[1] == 'hint':
+        await state.update_data(quiz_hint_bool=not data.get('quiz_hint_bool', False))
     
-    source = "رسمي 🤖" if data.get('is_bot_quiz') else ("خاص 👤" if data.get('selected_members') == [str(c.from_user.id)] else "عام 👥")
+    # محرك الوقت
+    elif action == 'cyc' and data_parts[1] == 'time':
+        curr = data.get('quiz_time', 15)
+        next_t = 20 if curr == 15 else (30 if curr == 20 else (45 if curr == 30 else 15))
+        await state.update_data(quiz_time=next_t)
+        
+    # محرك النظام (سرعة/كامل)
+    elif action == 'cyc' and data_parts[1] == 'mode':
+        curr_m = data.get('quiz_mode', 'السرعة ⚡')
+        next_m = 'الوقت الكامل ⏳' if curr_m == 'السرعة ⚡' else 'السرعة ⚡'
+        await state.update_data(quiz_mode=next_m)
 
-    text = (
-       f"┏━━━━━ إعدادات: {q['quiz_name']} ━━━━━┓\n"
-       f"📊 عدد الاسئلة: {q_count}\n"
-       f"📡 النطاق: {'إذاعة عامة 🌐' if is_public else 'مسابقة داخلية 📍'}\n"
-       f"🔖 النظام: {q_mode}\n"
-       f"⏳ المهلة: {q_time} ثانية\n"
-       f"💡 التلميح الذكي: {'مفعل ✅' if is_hint else 'معطل ❌'}\n"
-        "┗━━━━━━━━━━━━━━━━━━━━┛"
-     )
+    # محرك عدد الأسئلة
+    elif action == 'set' and data_parts[1] == 'cnt':
+        await state.update_data(quiz_count=int(data_parts[2]))
 
-    kb = InlineKeyboardMarkup(row_width=5) # جعل العرض يتسع لـ 5 أزرار
+    # بعد كل عملية.. نحدث اللوحة فوراً
+    new_data = await state.get_data()
+    await render_final_settings_panel(c.message, new_data, owner_id)
+
+
+# --- 6. معالج الحفظ (الذي جهزناه لك قبل قليل) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('start_quiz_'), state="*")
+async def start_save_process(c: types.CallbackQuery, state: FSMContext):
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return
     
-    # 1. أزرار الأسئلة المطلوبة (10، 15، 25، 32، 45)
-    kb.row(InlineKeyboardButton("📊 اختر عدد الأسئلة:", callback_data="ignore"))
-    counts = [10, 15, 25, 32, 45]
-    btn_counts = [InlineKeyboardButton(f"{'✅' if q_count==n else ''}{n}", callback_data=f"set_count_{n}") for n in counts]
-    kb.add(*btn_counts)
-
-    # 2. أزرار التحكم الأخرى
-    kb.row(InlineKeyboardButton(f"⏱️ المهلة: {q_time} ثانية", callback_data="cycle_time"))
-    
-    # زر التلميح (تم الإصلاح ليعمل بالتبديل المنطقي)
-    kb.row(
-        InlineKeyboardButton(f"🔖 {q_mode}", callback_data="cycle_mode"),
-        InlineKeyboardButton(f"💡 {q_hint_text}", callback_data="cycle_hint")
-    )
-    
-    # زر النطاق (إذاعة أو داخلي)
-    kb.row(InlineKeyboardButton(f"📡 النطاق: {q_scope_text}", callback_data="toggle_broadcast"))
-    
-    kb.row(InlineKeyboardButton("💾 حفظ وبدء الإذاعة 🚀", callback_data="save_quiz_process"))
-    kb.row(InlineKeyboardButton("❌ إغلاق", callback_data="close_window"))
-    
-    await c.message.edit_text(text, reply_markup=kb)
-
-# --- 5. المحركات المصلحة ---
-
-# محرك تبديل نظام الإذاعة (العام والخاص حسب طلبك)
-@dp.callback_query_handler(lambda c: c.data == "toggle_broadcast", state="*")
-async def toggle_broadcast(c: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    curr_b = data.get('is_broadcast', False)
-    await state.update_data(is_broadcast=not curr_b)
-    await final_quiz_settings_panel(c, state)
-
-# إصلاح محرك التلميح
-@dp.callback_query_handler(lambda c: c.data == "cycle_hint", state="*")
-async def cycle_hint(c: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    curr_h = data.get('quiz_hint_bool', False)
-    # تبديل القيمة وحفظ النص للعرض
-    new_h = not curr_h
-    await state.update_data(quiz_hint_bool=new_h, quiz_hint=("مفعل ✅" if new_h else "معطل ❌"))
-    await c.answer(f"تم {'تفعيل' if new_h else 'تعطيل'} التلميح الناري 🔥")
-    await final_quiz_settings_panel(c, state)
-
-# محرك عدد الأسئلة (يدعم الأرقام الجديدة)
-@dp.callback_query_handler(lambda c: c.data.startswith('set_count_'), state="*")
-async def set_count_direct(c: types.CallbackQuery, state: FSMContext):
-    count = int(c.data.split('_')[-1])
-    await state.update_data(quiz_count=count)
-    await c.answer(f"تم اختيار {count} سؤال")
-    await final_quiz_settings_panel(c, state)
-
-# بقية المحركات (الوقت والنظام) تبقى كما هي مع التأكد من استدعاء اللوحة
-@dp.callback_query_handler(lambda c: c.data == "cycle_time", state="*")
-async def cycle_time(c: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    curr = data.get('quiz_time', 15)
-    next_t = 20 if curr == 15 else (30 if curr == 20 else (45 if curr == 30 else 15))
-    await state.update_data(quiz_time=next_t)
-    await final_quiz_settings_panel(c, state)
-
-@dp.callback_query_handler(lambda c: c.data == "cycle_mode", state="*")
-async def cycle_mode(c: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    curr_m = data.get('quiz_mode', 'السرعة ⚡')
-    next_m = 'الوقت الكامل ⏳' if curr_m == 'السرعة ⚡' else 'السرعة ⚡'
-    await state.update_data(quiz_mode=next_m)
-    await final_quiz_settings_panel(c, state)
-    
-# --- 6. الحفظ ---
-@dp.callback_query_handler(lambda c: c.data == "save_quiz_process", state="*")
-async def start_save(c: types.CallbackQuery, state: FSMContext):
     await c.answer()
-    await c.message.edit_text("📝 أرسل الآن اسم المسابقة:")
+    await c.message.edit_text("📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**")
     await state.set_state("wait_for_name")
 
 @dp.message_handler(state="wait_for_name")
