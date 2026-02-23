@@ -588,61 +588,90 @@ async def view_questions(c: types.CallbackQuery):
     # استخدام HTML ليكون النص أوضح (bold للعناوين)
     await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
 
-# --- 6. نظام حذف الأسئلة ---
-@dp.callback_query_handler(lambda c: c.data.startswith('del_qs_menu_'), state="*")
+# --- 6. نظام حذف الأسئلة (المحمي) ---
+
+@dp.callback_query_handler(lambda c: c.data.startswith('del_qs_menu_'))
 async def delete_questions_menu(c: types.CallbackQuery):
+    data = c.data.split('_')
+    cat_id = data[3]
+    owner_id = int(data[4])
+
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ لا تملك صلاحية الحذف هنا!", show_alert=True)
+
     await c.answer()
-    cat_id = c.data.split('_')[-1]
     questions = supabase.table("questions").select("*").eq("category_id", cat_id).execute()
     
     kb = InlineKeyboardMarkup(row_width=1)
-    for q in questions.data:
-        kb.add(InlineKeyboardButton(f"🗑️ حذف: {q['question_content'][:25]}...", 
-                                    callback_data=f"pre_del_q_{q['id']}_{cat_id}"))
+    if questions.data:
+        for q in questions.data:
+            # تشفير بيانات الحذف (ID السؤال + ID القسم + ID المالك)
+            kb.add(InlineKeyboardButton(
+                f"🗑️ حذف: {q['question_content'][:25]}...", 
+                callback_data=f"pre_del_q_{q['id']}_{cat_id}_{owner_id}"
+            ))
     
-    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_questions_{cat_id}"))
+    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_questions_{cat_id}_{owner_id}"))
     await c.message.edit_text("🗑️ اختر السؤال المراد حذفه:", reply_markup=kb)
 
-@dp.callback_query_handler(lambda c: c.data.startswith('pre_del_q_'), state="*")
+@dp.callback_query_handler(lambda c: c.data.startswith('pre_del_q_'))
 async def confirm_delete_question(c: types.CallbackQuery):
     data = c.data.split('_')
-    q_id, cat_id = data[3], data[4]
+    q_id, cat_id, owner_id = data[3], data[4], data[5]
+
+    if c.from_user.id != int(owner_id):
+        return await c.answer("⚠️ مبعسس؟ ما تقدر تحذف! 😂", show_alert=True)
     
     kb = InlineKeyboardMarkup(row_width=2).add(
-        InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_q_{q_id}_{cat_id}"),
-        InlineKeyboardButton("❌ تراجع", callback_data=f"del_qs_menu_{cat_id}")
+        InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_q_{q_id}_{cat_id}_{owner_id}"),
+        InlineKeyboardButton("❌ تراجع", callback_data=f"del_qs_menu_{cat_id}_{owner_id}")
     )
     await c.message.edit_text("⚠️ هل أنت متأكد من حذف هذا السؤال؟", reply_markup=kb)
 
-@dp.callback_query_handler(lambda c: c.data.startswith('final_del_q_'), state="*")
+@dp.callback_query_handler(lambda c: c.data.startswith('final_del_q_'))
 async def execute_delete_question(c: types.CallbackQuery):
     data = c.data.split('_')
-    q_id, cat_id = data[3], data[4]
+    q_id, cat_id, owner_id = data[3], data[4], data[5]
     
-    # تنفيذ الحذف
+    # تنفيذ الحذف في سوبابيس
     supabase.table("questions").delete().eq("id", q_id).execute()
     await c.answer("🗑️ تم الحذف بنجاح", show_alert=True)
+    
+    # تحديث قائمة الحذف تلقائياً
     await delete_questions_menu(c)
 
-# --- 2. حذف القسم مع التأكيد ---
+
+# --- 7. حذف القسم نهائياً (مع التأكيد) ---
+
 @dp.callback_query_handler(lambda c: c.data.startswith('confirm_del_cat_'))
 async def confirm_delete_cat(c: types.CallbackQuery):
+    data = c.data.split('_')
+    cat_id = data[3]
+    owner_id = int(data[4])
+
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ لا تملك صلاحية حذف الأقسام!", show_alert=True)
+
     await c.answer()
-    cat_id = c.data.split('_')[-1]
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_cat_{cat_id}"),
-        InlineKeyboardButton("❌ لا، تراجع", callback_data=f"manage_questions_{cat_id}")
+        InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_cat_{cat_id}_{owner_id}"),
+        InlineKeyboardButton("❌ لا، تراجع", callback_data=f"manage_questions_{cat_id}_{owner_id}")
     )
     await c.message.edit_text("⚠️ هل أنت متأكد من حذف هذا القسم نهائياً مع كل أسئلته؟", reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data.startswith('final_del_cat_'))
 async def execute_delete_cat(c: types.CallbackQuery):
-    cat_id = c.data.split('_')[-1]
+    data = c.data.split('_')
+    cat_id = data[3]
+    owner_id = int(data[4])
+
+    # تنفيذ الحذف النهائي للقسم (سوبابيس سيحذف الأسئلة المرتبطة به تلقائياً إذا فعلت Cascade)
     supabase.table("categories").delete().eq("id", cat_id).execute()
-    await c.answer("🗑️ تم الحذف بنجاح", show_alert=True)
-    # الرجوع لقائمة الأقسام الرئيسية
-    await custom_add_menu(c)
+    await c.answer("🗑️ تم حذف القسم بالكامل بنجاح", show_alert=True)
+    
+    # الرجوع لقائمة الأقسام الرئيسية باستخدام دالة custom_add_menu التي أصلحناها بالآيدي
+    await custom_add_menu(c, state=None)
     
 @dp.callback_query_handler(lambda c: c.data == 'list_cats')
 async def list_categories_for_questions(c: types.CallbackQuery):
