@@ -86,6 +86,7 @@ def get_main_control_kb(user_id):
         InlineKeyboardButton("🛑 إغلاق", callback_data=f"close_bot_{user_id}")
     )
     return kb
+
 # ==========================================
 # ==========================================
 def get_categories_kb(user_id):
@@ -96,6 +97,7 @@ def get_categories_kb(user_id):
         InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_{user_id}")
     )
     return kb
+
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
