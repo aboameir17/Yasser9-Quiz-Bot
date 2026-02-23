@@ -735,45 +735,36 @@ async def list_categories_for_questions(c: types.CallbackQuery):
     except Exception as e:
         logging.error(f"Filter Error: {e}")
         await c.answer("⚠️ حدث خطأ في جلب الأقسام.")
-# --- دالة توليد لوحة اختيار الأعضاء ---
-def generate_members_keyboard(members, selected_list):
-    kb = InlineKeyboardMarkup(row_width=2)
-    for m in members:
-        m_id = str(m['user_id'])
-        mark = "✅ " if m_id in selected_list else ""
-        kb.insert(InlineKeyboardButton(f"{mark}{m['name']}", callback_data=f"toggle_mem_{m_id}"))
-    
-    kb.add(InlineKeyboardButton("➡️ التالي (اختيار الأقسام)", callback_data="go_to_cats_selection"))
-    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data="setup_quiz"))
-    return kb
-    
-    # --- 1. واجهة تهيئة المسابقة (متاحة للجميع) ---
-@dp.callback_query_handler(lambda c: c.data == 'setup_quiz', state="*")
+
+# --- 1. واجهة تهيئة المسابقة (النسخة النظيفة والمحمية) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('setup_quiz'), state="*")
 async def setup_quiz_main(c: types.CallbackQuery, state: FSMContext):
     await state.finish()
+    
+    # تحديد الهوية: هل هو ضغط مباشر أم قادم من زر رجوع مشفر؟
+    data_parts = c.data.split('_')
+    owner_id = int(data_parts[-1]) if len(data_parts) > 1 else c.from_user.id
+    
+    # حماية المبعسسين
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ اللوحة مش حقك يا حبيبنا 😂", show_alert=True)
+    
     await c.answer()
     
-        # حفظ صاحب الجلسة لنظام الأمان
-    await state.update_data(owner_id=c.from_user.id, owner_name=c.from_user.first_name)
+    # حفظ صاحب الجلسة في الـ State
+    await state.update_data(owner_id=owner_id, owner_name=c.from_user.first_name)
     
     text = "🎉 **أهلاً بك!**\nقم بتهيئة المسابقة عن طريق اختيار مصدر الأسئلة:"
     
-    kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        InlineKeyboardButton("👥 أقسام الأعضاء (إبداعات الآخرين)", callback_data="members_setup_step1"),
-        InlineKeyboardButton("👤 أقسامك الخاصة (مكتبتي)", callback_data="my_setup_step1"),
-        InlineKeyboardButton("🤖 أقسام البوت (الرسمية)", callback_data="bot_setup_step1"),
-        # الإصلاح: توجيهه إلى main_menu أو start (حسب مسمى الهاندلر الرئيسي عندك)
-        InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data="back_to_main_menu")
+    # هنا الحذف والاستدعاء: استدعينا الدالة من قسم المساعدة
+    await c.message.edit_text(
+        text, 
+        reply_markup=get_setup_quiz_kb(owner_id), 
+        parse_mode="Markdown"
     )
-    
-    try:
-        await c.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
-    except:
-        pass
-        
-    
-# --- جلب أقسام البوت الرسمية (تعديل ياسر الملك) ---
+
+
+    # --- جلب أقسام البوت الرسمية (تعديل ياسر الملك) ---
 @dp.callback_query_handler(lambda c: c.data == 'bot_setup_step1', state="*")
 async def start_bot_selection(c: types.CallbackQuery, state: FSMContext):
     await c.answer()
