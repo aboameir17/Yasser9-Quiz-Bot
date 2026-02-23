@@ -87,15 +87,27 @@ def get_main_control_kb(user_id):
     )
     return kb
 
+# 3️⃣ [ دالة عرض القائمة الرئيسية للأقسام ]
+async def custom_add_menu(c, owner_id, state):
+    if state:
+        await state.finish()
+        
+    kb = get_categories_kb(owner_id) 
+    await c.message.edit_text(
+        "⚙️ **لوحة إعدادات أقسامك الخاصة:**\n\nأهلاً بك! اختر من الخيارات أدناه لإدارة بنك أسئلتك وإضافة أقسام جديدة:",
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+    await c.answer()
 # ==========================================
+# ---الدالة التي طلبتها (تأكد أنها موجودة بهذا الاسم) ---
 # ==========================================
 def get_categories_kb(user_id):
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        InlineKeyboardButton("📝 إضافة قسم جديد", callback_data=f"add_new_cat_{user_id}"),
-        InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_{user_id}"),
-        InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_{user_id}")
-    )
+    kb.add(InlineKeyboardButton("➕ إضافة قسم جديد", callback_data=f"add_new_cat_{user_id}"))
+    kb.add(InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_cats_{user_id}"))
+    kb.add(InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_main_{user_id}"))
+    
     return kb
 
 # ==========================================
