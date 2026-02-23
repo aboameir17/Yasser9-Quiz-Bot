@@ -314,27 +314,33 @@ async def control_panel(message: types.Message):
         disable_web_page_preview=True
     )
 
-# --- [ معالج أزرار لوحة التحكم - المحرك الذكي ] ---
+# --- [ معالج أزرار لوحة التحكم - النسخة المصلحة ] ---
 
-@dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_')))
-async def handle_control_buttons(c: types.CallbackQuery):
-    # 1. فك التشفير (الأمر + آيدي صاحب اللوحة)
+@dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_')), state="*") # أضفنا state="*" هنا
+async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext): # أضفنا state هنا كباراميتر
+    # 1. فك التشفير
     data_parts = c.data.split('_')
     action = data_parts[0]
     owner_id = int(data_parts[-1]) 
 
-    # 🛑 [ الأمان ]: طرد المبعسسين فوراً
+    # 🛑 [ الأمان ]
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ هذي اللوحة مش حقك! اطلب لوحة خاصة فيك 😂", show_alert=True)
 
-    # 🛠️ [ أزرار التطوير ]: جلسة سابقة ولوحة الصدارة
+    # 🛠️ [ أزرار التطوير ]
     if action == "dev":
-        return await c.answer("🛠️ هذا القسم قيد التطوير حالياً.. انتظر التحديث يا بطل!", show_alert=True)
+        return await c.answer("🛠️ هذا القسم قيد التطوير حالياً..", show_alert=True)
 
-    # 🛑 [ زر الإغلاق ]: مسح الواجهة
+    # 🛑 [ زر الإغلاق ]
     if action == "close":
         await c.message.delete()
         return await c.answer("تم إغلاق اللوحة ✅")
+
+    # 📝 [ زر إضافة خاصة ]
+    if action == "custom":
+        await c.answer()
+        # ✅ التعديل الجوهري: مررنا الـ state للدالة عشان تقدر تسوي finish بدون أخطاء
+        await custom_add_menu(c, owner_id, state)
 
     # 📝 [ زر إضافة خاصة ]: الانتقال لقائمة الأقسام
     if action == "custom":
