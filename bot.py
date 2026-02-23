@@ -318,12 +318,12 @@ async def control_panel(message: types.Message):
 @dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_')), state="*")
 async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
-    action = data_parts[0]
+    action = data_parts[0] # هنا بياخذ أول كلمة (setup أو custom أو dev)
     owner_id = int(data_parts[-1]) 
 
-    # 🛡️ [ الأمان ]: فحص الهوية
+    # 🛑 [ الأمان ]
     if c.from_user.id != owner_id:
-        return await c.answer("⚠️ هذي اللوحة مش حقك! اطلب لوحة خاصة فيك 😂", show_alert=True)
+        return await c.answer("⚠️ هذي اللوحة مش حقك! 😂", show_alert=True)
 
     # 🛠️ [ أزرار التطوير ]
     if action == "dev":
@@ -334,10 +334,16 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
         await c.message.delete()
         return await c.answer("تم إغلاق اللوحة ✅")
 
-    # 📝 [ زر إضافة خاصة ] - استدعاء واحد فقط ونظيف
+    # 📝 [ زر إضافة خاصة ]
     if action == "custom":
         await c.answer()
         await custom_add_menu(c, owner_id, state)
+
+    # 🏆 [ زر تجهيز المسابقة ] - هذا اللي كان ناقصك
+    if action == "setup":
+        await c.answer()
+        # هنا نستدعي دالة عرض الأقسام لاختيار مسابقة (تأكد من اسم الدالة عندك)
+        await list_quizzes(c, owner_id, state)
         
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
 @dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
