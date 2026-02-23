@@ -272,9 +272,10 @@ async def start_cmd(message: types.Message):
 # --- [ أمر التحكم الرئيسي - بعد أمر start مباشرة ] ---
 
 @dp.message_handler(lambda m: m.text == "تحكم")
-async def control_panel(message: types.Message):
-    user_id = message.from_user.id
-    
+async def control_panel(message: types.Message, user_id: int = None):
+    # إذا ما أرسلنا آيدي، ياخذه من الرسالة.. وإذا أرسلنا آيدي (مثل حالة الرجوع) يستخدمه هو
+    if not user_id:
+        user_id = message.from_user.id
     
     # الحالة الأولى: إذا كانت الدردشة "خاص" (Private)
     if message.chat.type == 'private':
