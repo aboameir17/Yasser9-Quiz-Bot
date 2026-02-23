@@ -160,6 +160,34 @@ def generate_members_keyboard(members, selected_list, user_id):
     kb.add(InlineKeyboardButton("➡️ التالي (اختيار الأقسام)", callback_data=f"go_to_cats_selection_{user_id}"))
     kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{user_id}"))
     return kb
+# دالة عرض المبدعين المحدثة
+async def render_members_list(message, eligible_ids, selected_list, owner_id):
+    kb = InlineKeyboardMarkup(row_width=2)
+    for m_id in eligible_ids:
+        status = "✅ " if str(m_id) in selected_list else ""
+        # تشفير الزر بآيدي العضو وآيدي صاحب الجلسة
+        kb.insert(InlineKeyboardButton(f"{status} المبدع: {str(m_id)[-6:]}", callback_data=f"toggle_mem_{m_id}_{owner_id}"))
+    
+    if selected_list:
+        kb.add(InlineKeyboardButton(f"➡️ تم اختيار ({len(selected_list)}) .. عرض أقسامهم", callback_data=f"go_to_cats_step_{owner_id}"))
+    
+    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{owner_id}"))
+    await message.edit_text("👥 **أقسام الأعضاء:**", reply_markup=kb)
+
+# دالة عرض الأقسام المحدثة
+async def render_categories_list(message, eligible_cats, selected_cats, owner_id):
+    kb = InlineKeyboardMarkup(row_width=2)
+    for cat in eligible_cats:
+        cat_id_str = str(cat['id'])
+        status = "✅ " if cat_id_str in selected_cats else ""
+        kb.insert(InlineKeyboardButton(f"{status}{cat['name']}", callback_data=f"toggle_cat_{cat_id_str}_{owner_id}"))
+    
+    if selected_cats:
+        kb.add(InlineKeyboardButton(f"➡️ تم اختيار ({len(selected_cats)}) .. الإعدادات", callback_data=f"final_quiz_settings_{owner_id}"))
+    
+    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{owner_id}"))
+    await message.edit_text("📂 **اختر الأقسام:**", reply_markup=kb)
+
 # ==========================================
 # 3. دوال الفحص الأمني (Security Helpers)
 # ==========================================
