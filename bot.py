@@ -429,28 +429,37 @@ async def save_edited_category(message: types.Message, state: FSMContext):
     # الاستدعاء الذكي: نرسل رسالة جديدة (is_edit=False) لأننا حذفنا رسالة المستخدم
     # ونعرض لوحة الإعدادات بالاسم الجديد فوراً
     await show_category_settings_ui(message, cat_id, owner_id, is_edit=False)
-
 # ==========================================
+# --- 3. نظام إضافة سؤال (محمي ومنظم) ---
 # ==========================================
 
-# --- 3. نظام إضافة سؤال (تنظيف شامل وإصلاح زر لا) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('add_q_'))
 async def start_add_question(c: types.CallbackQuery, state: FSMContext):
+    data_parts = c.data.split('_')
+    cat_id = data_parts[2]
+    owner_id = int(data_parts[3])
+
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ لا يمكنك إضافة أسئلة في لوحة غيرك!", show_alert=True)
+
     await c.answer()
-    cat_id = c.data.split('_')[-1]
-    await state.update_data(current_cat_id=cat_id)
+    await state.update_data(current_cat_id=cat_id, current_owner_id=owner_id, last_bot_msg_id=c.message.message_id)
     await Form.waiting_for_question.set()
-    await c.message.edit_text("❓ **نظام إضافة الأسئلة:**\n\nاكتب الآن السؤال الذي تريد إضافته:")
-    await state.update_data(last_bot_msg_id=c.message.message_id)
+    
+    # زر إلغاء محمي
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("🚫 إلغاء", callback_data=f"manage_questions_{cat_id}_{owner_id}"))
+    await c.message.edit_text("❓ **نظام إضافة الأسئلة:**\n\nاكتب الآن السؤال الذي تريد إضافته:", reply_markup=kb)
 
 @dp.message_handler(state=Form.waiting_for_question)
 async def process_q_text(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.update_data(q_content=message.text)
+    
     try:
         await message.delete()
         await bot.delete_message(message.chat.id, data['last_bot_msg_id'])
     except: pass
+
     await Form.waiting_for_ans1.set()
     msg = await message.answer("✅ تم حفظ نص السؤال.\n\nالآن أرسل **الإجابة الصحيحة** الأولى:")
     await state.update_data(last_bot_msg_id=msg.message_id)
@@ -458,24 +467,27 @@ async def process_q_text(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Form.waiting_for_ans1)
 async def process_first_ans(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    await state.update_data(ans1=message.text, creator_id=str(message.from_user.id))
+    owner_id = data['current_owner_id']
+    await state.update_data(ans1=message.text)
     
-    # التعديل: البوت لا يحذف رسالة المستخدم هنا لتبقى واضحة للمراجعة
-    try:
-        if 'last_bot_msg_id' in data:
-            await bot.delete_message(message.chat.id, data['last_bot_msg_id'])
+    try: await bot.delete_message(message.chat.id, data['last_bot_msg_id'])
     except: pass
     
+    # تشفير أزرار نعم/لا بالآيدي لضمان استمرار الحماية
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("✅ نعم، إضافة ثانية", callback_data="add_second_ans"),
-        InlineKeyboardButton("❌ لا، إجابة واحدة فقط", callback_data="no_second_ans")
+        InlineKeyboardButton("✅ نعم، إضافة ثانية", callback_data=f"add_ans2_{owner_id}"),
+        InlineKeyboardButton("❌ لا، إجابة واحدة فقط", callback_data=f"no_ans2_{owner_id}")
     )
-    msg = await message.answer(f"✅ تم حفظ الإجابة: ({message.text})\n\nهل تريد إضافة إجابة ثانية (بديلة) لهذا السؤال؟", reply_markup=kb)
+    msg = await message.answer(f"✅ تم حفظ الإجابة: ({message.text})\n\nهل تريد إضافة إجابة ثانية (بديلة)؟", reply_markup=kb)
     await state.update_data(last_bot_msg_id=msg.message_id)
 
-@dp.callback_query_handler(lambda c: c.data == 'add_second_ans', state='*')
+# --- معالج إضافة إجابة ثانية ---
+@dp.callback_query_handler(lambda c: c.data.startswith('add_ans2_'), state='*')
 async def add_second_ans_start(c: types.CallbackQuery, state: FSMContext):
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return await c.answer("⚠️ عذراً، اللوحة محمية!", show_alert=True)
+    
     await c.answer()
     await Form.waiting_for_ans2.set()
     await c.message.edit_text("📝 أرسل الآن **الإجابة الثانية** البديلة:")
@@ -484,41 +496,48 @@ async def add_second_ans_start(c: types.CallbackQuery, state: FSMContext):
 async def process_second_ans(message: types.Message, state: FSMContext):
     data = await state.get_data()
     cat_id = data.get('current_cat_id')
-    await state.finish()
+    owner_id = data.get('current_owner_id')
+
     supabase.table("questions").insert({
         "category_id": cat_id,
         "question_content": data.get('q_content'),
         "correct_answer": data.get('ans1'),
         "alternative_answer": message.text,
-        "created_by": str(message.from_user.id)
+        "created_by": str(owner_id)
     }).execute()
-    try:
-        await message.delete()
-        if 'last_bot_msg_id' in data:
-            await bot.delete_message(message.chat.id, data['last_bot_msg_id'])
-    except: pass
-    await finalize_msg(message, cat_id)
 
-@dp.callback_query_handler(lambda c: c.data == 'no_second_ans', state='*')
+    await state.finish()
+    try: 
+        await message.delete()
+        await bot.delete_message(message.chat.id, data['last_bot_msg_id'])
+    except: pass
+    
+    # العودة للوحة الإعدادات باستخدام الدالة الموحدة
+    await show_category_settings_ui(message, cat_id, owner_id, is_edit=False)
+
+# --- معالج رفض إضافة إجابة ثانية (إصلاح زر لا) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('no_ans2_'), state='*')
 async def finalize_no_second(c: types.CallbackQuery, state: FSMContext):
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة ليست لك!", show_alert=True)
+    
     await c.answer()
     data = await state.get_data()
     cat_id = data.get('current_cat_id')
-    await state.finish()
+
     supabase.table("questions").insert({
         "category_id": cat_id,
         "question_content": data.get('q_content'),
         "correct_answer": data.get('ans1'),
-        "created_by": str(c.from_user.id)
+        "created_by": str(owner_id)
     }).execute()
+
+    await state.finish()
     try: await c.message.delete()
     except: pass
-    await finalize_msg(c.message, cat_id)
-
-async def finalize_msg(msg_obj, cat_id):
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("⚙️ العودة للوحة إعدادات القسم", callback_data=f"manage_questions_{cat_id}"))
-    await bot.send_message(msg_obj.chat.id, "✅ تم إضافة السؤال بنجاح!", reply_markup=kb)
+    
+    # العودة للوحة الإعدادات باستخدام الدالة الموحدة
+    await show_category_settings_ui(c.message, cat_id, owner_id, is_edit=False)
 
 # ==========================================
 # --- 5. نظام عرض الأسئلة (المحمي بآيدي صاحب القسم) ---
