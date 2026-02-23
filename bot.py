@@ -355,8 +355,9 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
     # 3️⃣ [ زر إضافة خاصة ]
     elif action == "custom":
         await c.answer()
-    # استدعاء الدالة وتمرير الـ owner_id والـ state لها
-    return await custom_add_menu(c, state=state)
+        # التعديل هنا: يجب أن يكون السطر القادم تحت elif مباشرة (4 مسافات)
+        return await custom_add_menu(c, state=state)
+
     # 4️⃣ [ زر تجهيز المسابقة ]
     elif action == "setup":
         await c.answer()
