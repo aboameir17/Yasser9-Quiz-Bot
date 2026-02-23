@@ -290,12 +290,8 @@ async def custom_add_menu(c: types.CallbackQuery, state: FSMContext):
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ هذي اللوحة مش حقك! 😂", show_alert=True)
 
-    # استخدام دالة الكيبورد الموحدة للأقسام (التي مررنا لها الآيدي)
-    kb = InlineKeyboardMarkup(row_width=1).add(
-        InlineKeyboardButton("➕ إضافة قسم جديد", callback_data=f"add_new_cat_{owner_id}"),
-        InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_cats_{owner_id}"),
-        InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_control_{owner_id}")
-    )
+# ==========================================
+# ==========================================
     
     await c.message.edit_text(
         "⚙️ **لوحة إعدادات أقسامك الخاصة:**\nيمكنك إضافة أقسام جديدة أو إدارة الأقسام الحالية.", 
@@ -437,33 +433,9 @@ async def save_edited_category(message: types.Message, state: FSMContext):
 
     await state.finish()
     
-    # جلب البيانات المحدثة لإعادة عرض اللوحة
-    cat_res = supabase.table("categories").select("name").eq("id", cat_id).single().execute()
-    q_res = supabase.table("questions").select("*", count="exact").eq("category_id", cat_id).execute()
-    q_count = q_res.count if q_res.count else 0
-    
-    txt = (f"⚙️ **إعدادات القسم: {cat_res.data['name']}**\n\n"
-           f"✅ تم تحديث الاسم بنجاح!\n"
-           f"📊 عدد الأسئلة المضافة: {q_count}\n"
-           f"ماذا تريد أن تفعل الآن؟")
+# ==========================================
+# ==========================================
 
-    # إعادة بناء الأزرار
-    kb = InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        InlineKeyboardButton("➕ إضافة سؤال مباشر", callback_data=f"add_q_{cat_id}"),
-        InlineKeyboardButton("📝 تعديل اسم القسم", callback_data=f"edit_cat_{cat_id}")
-    )
-    kb.add(
-        InlineKeyboardButton("🔍 عرض الأسئلة", callback_data=f"view_qs_{cat_id}"),
-        InlineKeyboardButton("🗑️ حذف الأسئلة", callback_data=f"del_qs_menu_{cat_id}")
-    )
-    kb.add(InlineKeyboardButton("❌ حذف القسم", callback_data=f"confirm_del_cat_{cat_id}"))
-    kb.add(
-        InlineKeyboardButton("🔙 رجوع", callback_data="list_cats"),
-        InlineKeyboardButton("🏠 التحكم الرئيسية", callback_data="back_to_control")
-    )
-
-    await message.answer(txt, reply_markup=kb)
 # --- 3. نظام إضافة سؤال (تنظيف شامل وإصلاح زر لا) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('add_q_'))
 async def start_add_question(c: types.CallbackQuery, state: FSMContext):
