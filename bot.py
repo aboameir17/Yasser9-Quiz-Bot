@@ -315,26 +315,23 @@ async def control_panel(message: types.Message):
         reply_markup=get_main_control_kb(user_id), 
         disable_web_page_preview=True
     )
-
-# --- [ معالج أزرار لوحة التحكم - النسخة المصلحة ] ---
-@dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_')), state="*")
+# 1. أضفنا 'back_' هنا في البداية عشان المعالج يحس بالضغطة
+@dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_', 'back_')), state="*")
 async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
-    action = data_parts[0] # هنا بياخذ أول كلمة (setup أو custom أو dev)
-    owner_id = int(data_parts[-1]) 
+    action = data_parts[0] 
+    owner_id = int(data_parts[-1])
 
     # 🛑 [ الأمان ]
     if c.from_user.id != owner_id:
-        return await c.answer("⚠️ هذي اللوحة مش حقك! 😂", show_alert=True)
+        return await c.answer("⚠️ لا تلمس أزرار غيرك! 😂", show_alert=True)
 
-    # 🛠️ [ أزرار التطوير ]
-    if action == "dev":
-        return await c.answer("🛠️ هذا القسم قيد التطوير حالياً..", show_alert=True)
-
-    # 🛑 [ زر الإغلاق ]
-    if action == "close":
-        await c.message.delete()
-        return await c.answer("تم إغلاق اللوحة ✅")
+    # 🔙 [ معالج زر الرجوع للقائمة الرئيسية ]
+    if action == "back":
+        await state.finish() # إنهاء أي حالة إدخال كانت مفتوحة
+        await c.answer("🔙 جاري العودة...")
+        await control_panel(c.message, owner_id)
+        return
 
     # 📝 [ زر إضافة خاصة ]
     if action == "custom":
@@ -342,18 +339,15 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
         await custom_add_menu(c, owner_id, state)
 
     # 🏆 [ زر تجهيز المسابقة ]
-    if action == "setup":
+    elif action == "setup":
         await c.answer()
-        # استدعاء الكيبورد اللي أنت صممته (get_setup_quiz_kb)
-        from bot import get_setup_quiz_kb # للتأكد من التعرف عليها
         keyboard = get_setup_quiz_kb(owner_id)
-        
         await c.message.edit_text(
             "🏆 **مرحباً بك في معمل تجهيز المسابقات!**\n\nمن أين تريد جلب الأسئلة لمسابقتك؟",
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
-    
+
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
 @dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
 async def process_auth_callback(callback_query: types.CallbackQuery):
