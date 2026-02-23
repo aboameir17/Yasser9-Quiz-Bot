@@ -791,115 +791,103 @@ async def setup_quiz_main(c: types.CallbackQuery, state: FSMContext):
         parse_mode="Markdown"
     )
 
+# ==========================================
+# 1. اختيار مصدر الأسئلة (رسمي / خاص / أعضاء)
+# ==========================================
 
-    # --- جلب أقسام البوت الرسمية (تعديل ياسر الملك) ---
-@dp.callback_query_handler(lambda c: c.data == 'bot_setup_step1', state="*")
+@dp.callback_query_handler(lambda c: c.data.startswith('bot_setup_step1_'), state="*")
 async def start_bot_selection(c: types.CallbackQuery, state: FSMContext):
-    await c.answer()
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة محمية!", show_alert=True)
     
-    # جلب الأقسام مباشرة من الجدول المخصص لها [cite: 2026-02-17]
     res = supabase.table("bot_categories").select("id, name").execute()
-    
-    if not res.data:
-        await c.answer("⚠️ لا توجد أقسام رسمية حالياً!", show_alert=True)
-        return
+    if not res.data: return await c.answer("⚠️ لا توجد أقسام رسمية!", show_alert=True)
 
-    # تحويل البيانات لتناسب وظيفة render_categories_list
-    # لاحظ أننا نستخدم الـ ID الحقيقي للقسم لضمان دقة الربط [cite: 2026-02-17]
     eligible_cats = [{"id": str(item['id']), "name": item['name']} for item in res.data]
-    
-    # تحديث الحالة: is_bot_quiz=True ليعرف البوت أننا في القسم الرسمي
-    await state.update_data(eligible_cats=eligible_cats, selected_cats=[], is_bot_quiz=True) 
-    
-    # استدعاء دالة العرض (التي يفترض أنها موجودة في كودك)
-    await render_categories_list(c.message, eligible_cats, [])
-    
+    await state.update_data(eligible_cats=eligible_cats, selected_cats=[], is_bot_quiz=True, current_owner_id=owner_id) 
+    await render_categories_list(c.message, eligible_cats, [], owner_id)
 
-# --- 1.5 - جلب الأقسام الخاصة بالمستخدم ---
-@dp.callback_query_handler(lambda c: c.data == 'my_setup_step1', state="*")
+@dp.callback_query_handler(lambda c: c.data.startswith('my_setup_step1_'), state="*")
 async def start_private_selection(c: types.CallbackQuery, state: FSMContext):
-    await c.answer()
-    user_id = str(c.from_user.id)
-    res = supabase.table("categories").select("*").eq("created_by", user_id).execute()
-    if not res.data:
-        await c.answer("⚠️ ليس لديك أقسام خاصة بك حالياً!", show_alert=True)
-        return
-    await state.update_data(eligible_cats=res.data, selected_cats=[], is_bot_quiz=False) 
-    await render_categories_list(c.message, res.data, [])
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة محمية!", show_alert=True)
+    
+    res = supabase.table("categories").select("*").eq("created_by", str(owner_id)).execute()
+    if not res.data: return await c.answer("⚠️ ليس لديك أقسام خاصة!", show_alert=True)
+    
+    await state.update_data(eligible_cats=res.data, selected_cats=[], is_bot_quiz=False, current_owner_id=owner_id) 
+    await render_categories_list(c.message, res.data, [], owner_id)
 
-# --- 2. جلب المبدعين ---
-@dp.callback_query_handler(lambda c: c.data == "members_setup_step1", state="*")
+@dp.callback_query_handler(lambda c: c.data.startswith('members_setup_step1_'), state="*")
 async def start_member_selection(c: types.CallbackQuery, state: FSMContext):
-    await c.answer()
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة محمية!", show_alert=True)
+    
     res = supabase.table("questions").select("created_by").execute()
-    if not res.data:
-        await c.answer("⚠️ لا يوجد أعضاء حالياً.", show_alert=True)
-        return
+    if not res.data: return await c.answer("⚠️ لا يوجد أعضاء حالياً.", show_alert=True)
+    
     from collections import Counter
     counts = Counter([q['created_by'] for q in res.data])
     eligible_ids = [m_id for m_id, count in counts.items() if count >= 15]
-    if not eligible_ids:
-        await c.answer("⚠️ لا يوجد مبدعون وصلوا لـ 15 سؤال.", show_alert=True)
-        return
-    await state.update_data(eligible_list=eligible_ids, selected_members=[], is_bot_quiz=False)
-    await render_members_list(c.message, eligible_ids, [])
+    
+    if not eligible_ids: return await c.answer("⚠️ لا يوجد مبدعون وصلوا لـ 15 سؤال.", show_alert=True)
+    
+    await state.update_data(eligible_list=eligible_ids, selected_members=[], is_bot_quiz=False, current_owner_id=owner_id)
+    await render_members_list(c.message, eligible_ids, [], owner_id)
 
-# --- 3. عرض القوائم ---
-async def render_members_list(message, eligible_ids, selected_list):
-    kb = InlineKeyboardMarkup(row_width=2)
-    for m_id in eligible_ids:
-        status = "✅ " if m_id in selected_list else ""
-        kb.insert(InlineKeyboardButton(f"{status} المبدع: {str(m_id)[-6:]}", callback_data=f"toggle_mem_{m_id}"))
-    if selected_list:
-        kb.add(InlineKeyboardButton(f"➡️ تم اختيار ({len(selected_list)}) .. عرض أقسامهم", callback_data="go_to_cats_step"))
-    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data="setup_quiz"))
-    await message.edit_text("👥 **أقسام الأعضاء:**", reply_markup=kb)
+# ==========================================
+# 2. معالجات التبديل والاختيار (Toggle & Go)
+# ==========================================
 
 @dp.callback_query_handler(lambda c: c.data.startswith('toggle_mem_'), state="*")
 async def toggle_member(c: types.CallbackQuery, state: FSMContext):
-    m_id = c.data.replace('toggle_mem_', '')
+    data_parts = c.data.split('_')
+    m_id = data_parts[2]
+    owner_id = int(data_parts[3])
+    
+    if c.from_user.id != owner_id: return await c.answer("⚠️ مبعسس؟ ما تقدر تختار! 😂", show_alert=True)
+    
     data = await state.get_data()
     selected = data.get('selected_members', [])
     eligible = data.get('eligible_list', [])
+    
     if m_id in selected: selected.remove(m_id)
     else: selected.append(m_id)
+    
     await state.update_data(selected_members=selected)
     await c.answer()
-    await render_members_list(c.message, eligible, selected)
+    await render_members_list(c.message, eligible, selected, owner_id)
 
-@dp.callback_query_handler(lambda c: c.data == "go_to_cats_step", state="*")
+@dp.callback_query_handler(lambda c: c.data.startswith('go_to_cats_step_'), state="*")
 async def show_selected_members_cats(c: types.CallbackQuery, state: FSMContext):
-    await c.answer()
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة ليست لك!", show_alert=True)
+    
     data = await state.get_data()
     chosen_ids = data.get('selected_members', [])
     res = supabase.table("categories").select("id, name").in_("created_by", chosen_ids).execute()
+    
     await state.update_data(eligible_cats=res.data, selected_cats=[])
-    await render_categories_list(c.message, res.data, [])
-
-async def render_categories_list(message, eligible_cats, selected_cats):
-    kb = InlineKeyboardMarkup(row_width=2)
-    for cat in eligible_cats:
-        cat_id_str = str(cat['id'])
-        status = "✅ " if cat_id_str in selected_cats else ""
-        kb.insert(InlineKeyboardButton(f"{status}{cat['name']}", callback_data=f"toggle_cat_{cat_id_str}"))
-    if selected_cats:
-        kb.add(InlineKeyboardButton(f"➡️ تم اختيار ({len(selected_cats)}) .. الإعدادات", callback_data="final_quiz_settings"))
-    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data="setup_quiz"))
-    await message.edit_text("📂 **اختر الأقسام:**", reply_markup=kb)
+    await render_categories_list(c.message, res.data, [], owner_id)
 
 @dp.callback_query_handler(lambda c: c.data.startswith('toggle_cat_'), state="*")
 async def toggle_category_selection(c: types.CallbackQuery, state: FSMContext):
-    cat_id = c.data.replace('toggle_cat_', '')
+    data_parts = c.data.split('_')
+    cat_id = data_parts[2]
+    owner_id = int(data_parts[3])
+    
+    if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة محمية!", show_alert=True)
+
     data = await state.get_data()
     selected = data.get('selected_cats', [])
     eligible = data.get('eligible_cats', [])
-    if cat_id in selected: 
-        selected.remove(cat_id)
-    else: 
-        selected.append(cat_id)
+    
+    if cat_id in selected: selected.remove(cat_id)
+    else: selected.append(cat_id)
+    
     await state.update_data(selected_cats=selected)
     await c.answer()
-    await render_categories_list(c.message, eligible, selected)
+    await render_categories_list(c.message, eligible, selected, owner_id)
 
 # --- 4. لوحة الإعدادات (نسخة التشطيب النهائي - ياسر) ---
 @dp.callback_query_handler(lambda c: c.data == "final_quiz_settings", state="*")
