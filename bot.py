@@ -402,11 +402,12 @@ async def process_auth_callback(callback_query: types.CallbackQuery):
 # --- [ 2. إدارة الأقسام والأسئلة (النسخة المصلحة) ] ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('custom_add'), state="*")
-async def custom_add_menu(c: types.CallbackQuery, owner_id: int, state: FSMContext = None):
+# السطر القادم هو اللي فيه التعديل (حذفنا owner_id من الأقواس)
+async def custom_add_menu(c: types.CallbackQuery, state: FSMContext = None):
     if state:
         await state.finish()
     
-    # 1. استخراج الآيدي والحماية
+    # 1. استخراج الآيدي والحماية (هنا يتم تعريف owner_id تلقائياً)
     data_parts = c.data.split('_')
     try:
         owner_id = int(data_parts[-1])
@@ -416,11 +417,10 @@ async def custom_add_menu(c: types.CallbackQuery, owner_id: int, state: FSMConte
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ هذي اللوحة مش حقك! 😂", show_alert=True)
 
-    # 2. استدعاء الكيبورد المنظم (الذي طلبته)
-    # ملاحظة: تم نقل زر الإضافة وجعل زر الرجوع في الأسفل داخل get_categories_kb
+    # 2. استدعاء الكيبورد المنظم
     kb = get_categories_kb(owner_id)
 
-    # 3. تحديث الرسالة بشكل أنيق
+    # 3. تحديث الرسالة
     await c.message.edit_text(
         "⚙️ **لوحة إعدادات أقسامك الخاصة:**\n\nأهلاً بك يا بطل! من هنا يمكنك التحكم ببنك أسئلتك الخاص. اختر ما تريد القيام به:", 
         reply_markup=kb, 
