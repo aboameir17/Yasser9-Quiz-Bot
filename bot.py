@@ -337,8 +337,7 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
     # 📝 [ زر إضافة خاصة ] - استدعاء واحد فقط ونظيف
     if action == "custom":
         await c.answer()
-        # نمرر الـ state هنا عشان الدالة تقدر تسوي له finish
-        await custom_add_menu(c, state, owner_id)
+        await custom_add_menu(c, owner_id, state)
         
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
 @dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
