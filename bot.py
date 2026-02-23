@@ -1037,7 +1037,7 @@ async def process_quiz_name(message: types.Message, state: FSMContext):
             f"✅ **تم حفظ المسابقة بنجاح!**\n\n"
             f"🏷 الاسم: {quiz_name}\n"
             f"📊 الأقسام: {len(selected_cats)}\n"
-            f"🚀 ستجدها الآن في 'قائمة مسابقاتي' لجهاز الإطلاق."
+            f"🚀 ستجدها الآن في 'قائمة مسابقاتك اكتب كلمة مسابقة' لرؤية مسابقاتك ."
         )
         await message.answer(success_msg, parse_mode="Markdown")
         await state.finish() # تنظيف الحالة
@@ -1046,64 +1046,55 @@ async def process_quiz_name(message: types.Message, state: FSMContext):
         logging.error(f"Error saving quiz: {e}")
         await message.answer("❌ حدث خطأ أثناء الحفظ! تأكد من إعدادات جدول saved_quizzes في سوبابيس.")
 
-# --- [1] عرض القائمة الرئيسية (نظام ياسر المتطور: خاص vs عام) ---
+# --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
 @dp.message_handler(lambda message: message.text == "مسابقة")
+@dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
 async def show_quizzes(obj):
-    chat_id = obj.chat.id if isinstance(obj, types.Message) else obj.message.chat.id
+    # 1. توحيد البيانات
+    is_callback = isinstance(obj, types.CallbackQuery)
+    chat_id = obj.message.chat.id if is_callback else obj.chat.id
     user = obj.from_user
     u_id = str(user.id)
     
-    # 🛡️ فحص الصلاحيات المزدوج
-    status = await get_group_status(chat_id)
-    
-    # 1. التحقق إذا كان المستخدم هو "مالك" أو "مشرف" في القروب (تشغيل خاص)
-    member = await bot.get_chat_member(chat_id, user.id)
-    is_admin_here = member.is_chat_admin() or member.is_chat_creator()
-    
-    # 2. منطق السماح:
-    # يسمح بالدخول في الحالات التالية:
-    # - إذا كنت أنت المطور (ياسر)
-    # - إذا كان القروب مفعل رسمياً (status == 'active')
-    # - إذا كان الشخص مشرفاً ويبي يشغل مسابقاته في قروبه (تشغيل خاص)
-    
-    can_proceed = (
-        chat_id == ADMIN_ID or 
-        status == "active" or 
-        (is_admin_here and chat_id < 0) # chat_id < 0 يعني داخل قروب
-    )
+    # 2. شرط التفعيل (يُطبق فقط في المجموعات)
+    # إذا كان chat_id أصغر من 0 يعني نحن في جروب
+    if chat_id < 0:
+        status = await get_group_status(chat_id)
+        # إذا لم يكن الجروب مفعلاً وليس أنت المطور
+        if status != "active" and u_id != str(ADMIN_ID):
+            msg = (
+                "⚠️ **نظام المسابقات غير مفعل في هذه المجموعة**\n\n"
+                "يجب طلب التفعيل من الإدارة أولاً.\n"
+                "أرسل كلمة ( **تفعيل** ) لإرسال طلبك."
+            )
+            if is_callback: return await obj.message.edit_text(msg, parse_mode="Markdown")
+            return await obj.reply(msg, parse_mode="Markdown")
 
-    if not can_proceed:
-        msg = (
-            "━━━━━━━━━━━━━━\n"
-            "⚠️ <b>نظام النشر العام مقفل</b>\n"
-            "━━━━━━━━━━━━━━\n"
-            "عذراً، التشغيل في هذه المجموعة يتطلب تفعيل 'عام'.\n\n"
-            "إذا كنت مشرفاً وتريد تشغيل البوت للجميع، أرسل: (<b>تفعيل</b>).\n"
-            "━━━━━━━━━━━━━━"
-        )
-        if isinstance(obj, types.Message): return await obj.reply(msg, parse_mode="HTML")
-        else: return await obj.message.edit_text(msg, parse_mode="HTML")
-
-    # --- تكملة الكود الطبيعي لعرض المسابقات ---
+    # 3. جلب المسابقات (مسموح دائماً في الخاص، ومسموح في القروبات المفعلة)
     res = supabase.table("saved_quizzes").select("*").eq("created_by", u_id).execute()
     kb = InlineKeyboardMarkup(row_width=1)
     
     if not res.data:
-        msg_text = "⚠️ ليس لديك مسابقات محفوظة باسمك حالياً."
-        if isinstance(obj, types.Message): await obj.answer(msg_text)
-        else: await obj.message.edit_text(msg_text)
-        return
+        msg_empty = f"⚠️ **يا {user.first_name}، لا توجد لديك مسابقات محفوظة باسمك.**"
+        if is_callback: return await obj.message.edit_text(msg_empty)
+        return await obj.answer(msg_empty)
 
+    # 4. بناء القائمة (الأسماء فقط)
     for q in res.data:
-        kb.add(InlineKeyboardButton(f"🏆 مسابقة: {q['quiz_name']}", callback_data=f"manage_quiz_{q['id']}_{u_id}"))
+        kb.add(InlineKeyboardButton(
+            f"🏆 مسابقة: {q['quiz_name']}", 
+            callback_data=f"manage_quiz_{q['id']}_{u_id}"
+        ))
     
-    kb.add(InlineKeyboardButton("🤖 أسئلة البوت (قيد التطوير)", callback_data=f"bot_dev_msg_{u_id}"))
     kb.add(InlineKeyboardButton("❌ إغلاق النافذة", callback_data=f"close_{u_id}"))
     
     title = f"🎁 **قائمة مسابقاتك يا {user.first_name}:**"
-    if isinstance(obj, types.Message): await obj.reply(title, reply_markup=kb)
-    else: await obj.message.edit_text(title, reply_markup=kb)
 
+    if is_callback:
+        await obj.message.edit_text(title, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await obj.reply(title, reply_markup=kb, parse_mode="Markdown")
+        
 # ==========================================
 # [2] المحرك الأمني ولوحة التحكم (نسخة التشطيب النهائي - ياسر)
 # ==========================================
