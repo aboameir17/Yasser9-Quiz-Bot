@@ -86,13 +86,13 @@ def get_main_control_kb(user_id):
         InlineKeyboardButton("🛑 إغلاق", callback_data=f"close_bot_{user_id}")
     )
     return kb
-
 # ==========================================
 
 # ==========================================
 def get_categories_kb(user_id):
-    kb = InlineKeyboardMarkup(row_width=1).add(
-        InlineKeyboardButton("➕ إضافة قسم جديد", callback_data=f"add_new_cat_{user_id}"),
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton("📝 إضافة قسم جديد", callback_data=f"add_new_cat_{user_id}"),
         InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_{user_id}"),
         InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_{user_id}")
     )
