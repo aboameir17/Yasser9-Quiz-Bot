@@ -341,12 +341,19 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
         await c.answer()
         await custom_add_menu(c, owner_id, state)
 
-    # 🏆 [ زر تجهيز المسابقة ] - هذا اللي كان ناقصك
+    # 🏆 [ زر تجهيز المسابقة ]
     if action == "setup":
         await c.answer()
-        # هنا نستدعي دالة عرض الأقسام لاختيار مسابقة (تأكد من اسم الدالة عندك)
-        await list_quizzes(c, owner_id, state)
+        # استدعاء الكيبورد اللي أنت صممته (get_setup_quiz_kb)
+        from bot import get_setup_quiz_kb # للتأكد من التعرف عليها
+        keyboard = get_setup_quiz_kb(owner_id)
         
+        await c.message.edit_text(
+            "🏆 **مرحباً بك في معمل تجهيز المسابقات!**\n\nمن أين تريد جلب الأسئلة لمسابقتك؟",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+    
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
 @dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
 async def process_auth_callback(callback_query: types.CallbackQuery):
