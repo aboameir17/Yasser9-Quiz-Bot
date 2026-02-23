@@ -372,28 +372,47 @@ async def process_auth_callback(callback_query: types.CallbackQuery):
         # إشعار القروب (اختياري)
         await bot.send_message(target_id, "🚫 **نعتذر، تم رفض طلب تفعيل البوت في هذا القروب.**")
 
-# --- 2. إدارة الأقسام والأسئلة (نسخة محمية بآيدي المستخدم) ---
+# --- [ 2. إدارة الأقسام والأسئلة (النسخة المصلحة) ] ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('custom_add'), state="*")
 async def custom_add_menu(c: types.CallbackQuery, state: FSMContext):
     await state.finish()
-    # استخراج الآيدي من الكولباك (إذا كان موجوداً) أو استخدامه من الشخص الذي ضغط
+    
+    # 1. استخراج الآيدي بطريقة ذكية
     data_parts = c.data.split('_')
-    owner_id = int(data_parts[-1]) if len(data_parts) > 1 else c.from_user.id
+    try:
+        owner_id = int(data_parts[-1])
+    except (ValueError, IndexError):
+        owner_id = c.from_user.id
 
-    # حماية من المبعسسين
+    # 2. حماية من المبعسسين
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ هذي اللوحة مش حقك! 😂", show_alert=True)
 
-# ==========================================
-# ==========================================
-    
+    # 3. بناء الكيبورد (هذا اللي كان ناقصك يا ياسر)
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("📝 إضافة قسم جديد", callback_data=f"add_new_cat_{owner_id}"),
+        InlineKeyboardButton("🛑 إغلاق", callback_data=f"close_bot_{owner_id}")
+    )
+
+    # 4. جلب الأقسام من قاعدة البيانات
+    try:
+        res = supabase.table("categories").select("*").eq("created_by", str(owner_id)).execute()
+        categories = res.data
+        if categories:
+            for cat in categories:
+                kb.add(InlineKeyboardButton(f"📂 {cat['name']}", callback_data=f"manage_questions_{cat['id']}_{owner_id}"))
+    except Exception as e:
+        logging.error(f"Error fetching categories: {e}")
+
+    # 5. تحديث الرسالة
     await c.message.edit_text(
         "⚙️ **لوحة إعدادات أقسامك الخاصة:**\nيمكنك إضافة أقسام جديدة أو إدارة الأقسام الحالية.", 
         reply_markup=kb, 
         parse_mode="Markdown"
     )
-    await c.answer()
+    await c.answer() 
 
 @dp.callback_query_handler(lambda c: c.data.startswith('add_new_cat'), state="*")
 async def btn_add_cat(c: types.CallbackQuery):
