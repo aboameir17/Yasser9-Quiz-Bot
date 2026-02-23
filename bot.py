@@ -520,37 +520,54 @@ async def finalize_msg(msg_obj, cat_id):
     kb.add(InlineKeyboardButton("⚙️ العودة للوحة إعدادات القسم", callback_data=f"manage_questions_{cat_id}"))
     await bot.send_message(msg_obj.chat.id, "✅ تم إضافة السؤال بنجاح!", reply_markup=kb)
 
-# --- 5. نظام عرض الأسئلة (يقرأ الإجابة البديلة) ---
+# ==========================================
+# --- 5. نظام عرض الأسئلة (المحمي بآيدي صاحب القسم) ---
+# ==========================================
+
 @dp.callback_query_handler(lambda c: c.data.startswith('view_qs_'), state="*")
 async def view_questions(c: types.CallbackQuery):
+    # تفكيك البيانات: view_qs_CATID_OWNERID
+    data = c.data.split('_')
+    cat_id = data[2]
+    owner_id = int(data[3])
+
+    # 🛑 حماية من المبعسسين
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ لا يمكنك عرض أسئلة في لوحة غيرك!", show_alert=True)
+
     await c.answer()
-    cat_id = c.data.split('_')[-1]
-    
+
     # جلب الأسئلة من Supabase
     questions = supabase.table("questions").select("*").eq("category_id", cat_id).execute()
     
+    # إذا كان القسم فارغاً
     if not questions.data:
-        await c.message.edit_text("⚠️ لا توجد أسئلة مضافة في هذا القسم حالياً.", 
-                                  reply_markup=InlineKeyboardMarkup().add(
-                                      InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_questions_{cat_id}")
-                                  ))
-        return
+        kb = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_questions_{cat_id}_{owner_id}")
+        )
+        return await c.message.edit_text("⚠️ لا توجد أسئلة مضافة في هذا القسم حالياً.", reply_markup=kb)
 
-    txt = f"🔍 **قائمة الأسئلة:**\n\n"
+    # بناء نص عرض الأسئلة
+    txt = f"🔍 **قائمة الأسئلة المضافة:**\n"
+    txt += "--- --- --- ---\n\n"
+    
     for i, q in enumerate(questions.data, 1):
-        txt += f"❓ {i}- {q['question_content']}\n"
+        txt += f"<b>{i} - {q['question_content']}</b>\n"
         txt += f"✅ ج1: {q['correct_answer']}\n"
-        # التحقق من العمود الجديد
+        # التحقق من وجود إجابة بديلة (ج2)
         if q.get('alternative_answer'):
             txt += f"💡 ج2: {q['alternative_answer']}\n"
         txt += "--- --- --- ---\n"
 
+    # أزرار التحكم في القائمة (محمية بالآيدي)
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton("🗑️ حذف الأسئلة", callback_data=f"del_qs_menu_{cat_id}"),
-        InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_questions_{cat_id}")
+        InlineKeyboardButton("🗑️ حذف الأسئلة", callback_data=f"del_qs_menu_{cat_id}_{owner_id}"),
+        InlineKeyboardButton("🔙 رجوع لإعدادات القسم", callback_data=f"manage_questions_{cat_id}_{owner_id}")
     )
-    await c.message.edit_text(txt, reply_markup=kb)
+    
+    # استخدام HTML ليكون النص أوضح (bold للعناوين)
+    await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
 
 # --- 6. نظام حذف الأسئلة ---
 @dp.callback_query_handler(lambda c: c.data.startswith('del_qs_menu_'), state="*")
