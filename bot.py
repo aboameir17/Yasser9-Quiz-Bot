@@ -315,15 +315,13 @@ async def control_panel(message: types.Message):
     )
 
 # --- [ معالج أزرار لوحة التحكم - النسخة المصلحة ] ---
-
-@dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_')), state="*") # أضفنا state="*" هنا
-async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext): # أضفنا state هنا كباراميتر
-    # 1. فك التشفير
+@dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_')), state="*")
+async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
     action = data_parts[0]
     owner_id = int(data_parts[-1]) 
 
-    # 🛑 [ الأمان ]
+    # 🛡️ [ الأمان ]: فحص الهوية
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ هذي اللوحة مش حقك! اطلب لوحة خاصة فيك 😂", show_alert=True)
 
@@ -336,17 +334,11 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext): # �
         await c.message.delete()
         return await c.answer("تم إغلاق اللوحة ✅")
 
-    # 📝 [ زر إضافة خاصة ]
+    # 📝 [ زر إضافة خاصة ] - استدعاء واحد فقط ونظيف
     if action == "custom":
         await c.answer()
-        # ✅ التعديل الجوهري: مررنا الـ state للدالة عشان تقدر تسوي finish بدون أخطاء
-        await custom_add_menu(c, owner_id, state)
-
-    # 📝 [ زر إضافة خاصة ]: الانتقال لقائمة الأقسام
-    if action == "custom":
-        await c.answer()
-        # هنا نستدعي دالة قائمة الأقسام مع تمرير owner_id عشان الحماية تستمر
-        await custom_add_menu(c, owner_id)
+        # نمرر الـ state هنا عشان الدالة تقدر تسوي له finish
+        await custom_add_menu(c, state, owner_id)
         
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
 @dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
