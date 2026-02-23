@@ -163,6 +163,35 @@ async def control_panel(message: types.Message):
         reply_markup=get_main_control_kb(user_id), 
         disable_web_page_preview=True
     )
+
+# --- [ معالج أزرار لوحة التحكم - المحرك الذكي ] ---
+
+@dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_')))
+async def handle_control_buttons(c: types.CallbackQuery):
+    # 1. فك التشفير (الأمر + آيدي صاحب اللوحة)
+    data_parts = c.data.split('_')
+    action = data_parts[0]
+    owner_id = int(data_parts[-1]) 
+
+    # 🛑 [ الأمان ]: طرد المبعسسين فوراً
+    if c.from_user.id != owner_id:
+        return await c.answer("⚠️ هذي اللوحة مش حقك! اطلب لوحة خاصة فيك 😂", show_alert=True)
+
+    # 🛠️ [ أزرار التطوير ]: جلسة سابقة ولوحة الصدارة
+    if action == "dev":
+        return await c.answer("🛠️ هذا القسم قيد التطوير حالياً.. انتظر التحديث يا بطل!", show_alert=True)
+
+    # 🛑 [ زر الإغلاق ]: مسح الواجهة
+    if action == "close":
+        await c.message.delete()
+        return await c.answer("تم إغلاق اللوحة ✅")
+
+    # 📝 [ زر إضافة خاصة ]: الانتقال لقائمة الأقسام
+    if action == "custom":
+        await c.answer()
+        # هنا نستدعي دالة قائمة الأقسام مع تمرير owner_id عشان الحماية تستمر
+        await custom_add_menu(c, owner_id)
+        
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
 @dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
 async def process_auth_callback(callback_query: types.CallbackQuery):
