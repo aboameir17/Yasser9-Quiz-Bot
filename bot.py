@@ -673,34 +673,43 @@ async def execute_delete_cat(c: types.CallbackQuery):
     # الرجوع لقائمة الأقسام الرئيسية باستخدام دالة custom_add_menu التي أصلحناها بالآيدي
     await custom_add_menu(c, state=None)
     
-@dp.callback_query_handler(lambda c: c.data == 'list_cats')
+# --- 8. نظام عرض قائمة الأقسام (تصفية وحماية) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('list_cats_'))
 async def list_categories_for_questions(c: types.CallbackQuery):
     try:
-        # 1. جلب معرف المستخدم الحالي (للتأكد من خصوصية الأقسام)
-        user_id = str(c.from_user.id)
+        # استخراج الآيدي من الكولباك لضمان الحماية
+        owner_id = int(c.data.split('_')[-1])
         
-        # 2. طلب الأقسام التي تخص هذا المستخدم فقط باستخدام .eq()
-        # هذا هو السطر الذي سيمنع عبير من رؤية أقسامك
-        res = supabase.table("categories").select("*").eq("created_by", user_id).execute()
+        if c.from_user.id != owner_id:
+            return await c.answer("⚠️ لا يمكنك استعراض أقسام غيرك!", show_alert=True)
+
+        await c.answer()
+        
+        # طلب الأقسام التي تخص هذا المستخدم فقط من سوبابيس
+        res = supabase.table("categories").select("*").eq("created_by", str(owner_id)).execute()
         categories = res.data
 
         if not categories:
-            await c.answer("⚠️ ليس لديك أقسام خاصة بك حالياً.", show_alert=True)
-            return
+            # إذا لم يكن لديه أقسام، نرسل تنبيهاً ونبقى في نفس اللوحة
+            return await c.answer("⚠️ ليس لديك أقسام خاصة بك حالياً، قم بإضافة قسم أولاً.", show_alert=True)
 
         kb = InlineKeyboardMarkup(row_width=1)
         for cat in categories:
-            # صنع زر لكل قسم خاص بالمستخدم فقط
-            kb.add(InlineKeyboardButton(f"📂 {cat['name']}", callback_data=f"manage_questions_{cat['id']}"))
+            # تشفير أزرار الأقسام بآيدي القسم وآيدي المالك
+            # manage_questions_CATID_OWNERID
+            kb.add(InlineKeyboardButton(
+                f"📂 {cat['name']}", 
+                callback_data=f"manage_questions_{cat['id']}_{owner_id}"
+            ))
 
-        # تصحيح: الرجوع للوحة التحكم الخاصة بك
-        kb.add(InlineKeyboardButton("⬅️ الرجوع", callback_data="custom_add"))
+        # زر الرجوع للوحة "إضافة خاصة" بآيدي المستخدم
+        kb.add(InlineKeyboardButton("⬅️ الرجوع", callback_data=f"custom_add_{owner_id}"))
+        
         await c.message.edit_text("📋 اختر أحد أقسامك لإدارة الأسئلة:", reply_markup=kb)
 
     except Exception as e:
         logging.error(f"Filter Error: {e}")
-        await c.answer("⚠️ حدث خطأ في تصفية الأقسام.")
-
+        await c.answer("⚠️ حدث خطأ في جلب الأقسام.")
 # --- دالة توليد لوحة اختيار الأعضاء ---
 def generate_members_keyboard(members, selected_list):
     kb = InlineKeyboardMarkup(row_width=2)
