@@ -375,7 +375,7 @@ async def process_auth_callback(callback_query: types.CallbackQuery):
 # --- [ 2. إدارة الأقسام والأسئلة (النسخة المصلحة) ] ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('custom_add'), state="*")
-async def custom_add_menu(c: types.CallbackQuery, state: FSMContext):
+async def custom_add_menu(c: types.CallbackQuery, owner_id: int, state: FSMContext = None):
     await state.finish()
     
     # 1. استخراج الآيدي بطريقة ذكية
