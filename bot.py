@@ -1024,63 +1024,63 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     await render_final_settings_panel(c.message, new_data, owner_id)
 
 
-# --- 6. معالج الحفظ (الذي جهزناه لك قبل قليل) ---
+# --- 6. معالج الحفظ (طلب الاسم) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('start_quiz_'), state="*")
 async def start_save_process(c: types.CallbackQuery, state: FSMContext):
     owner_id = int(c.data.split('_')[-1])
-    if c.from_user.id != owner_id: return
+    if c.from_user.id != owner_id: 
+        return await c.answer("⚠️ عذراً، هذا الأمر ليس لك!", show_alert=True)
     
     await c.answer()
     await c.message.edit_text("📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**")
     await state.set_state("wait_for_name")
 
- # --- 6. معالج الحفظ النهائي في قاعدة البيانات ---
-
+# --- 6. معالج الحفظ النهائي في قاعدة البيانات ---
 @dp.message_handler(state="wait_for_name")
 async def process_quiz_name(message: types.Message, state: FSMContext):
     quiz_name = message.text.strip()
     data = await state.get_data()
     selected_cats = data.get('selected_cats', [])
     
-    # التأكد من وجود أقسام مختارة قبل الحفظ
+    # التأكد من وجود أقسام مختارة
     if not selected_cats:
         await message.answer("⚠️ خطأ: لم يتم اختيار أي قسم! ابدأ التهيئة من جديد.")
         await state.finish()
         return
 
-    # تجهيز البيانات (Payload) لـ Supabase
+    # تجهيز البيانات (Payload) لـ Supabase من الذاكرة
     payload = {
         "created_by": str(message.from_user.id),
         "quiz_name": quiz_name,
         "chat_id": str(message.chat.id), 
-        "is_public": data.get('is_broadcast', False), # ربطها بخيار النطاق
+        "is_public": data.get('is_broadcast', False),
         "time_limit": data.get('quiz_time', 15),
         "questions_count": data.get('quiz_count', 10),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
-        # استخدام القيمة المنطقية مباشرة (أكثر دقة)
         "hint_enabled": data.get('quiz_hint_bool', False),
         "is_bot_quiz": data.get('is_bot_quiz', False),
-        "cats": selected_cats  # تُرسل كـ List وسوبابيس يتعامل معها كـ JSONB
+        "cats": selected_cats  
     }
 
     try:
-        # تنفيذ الحفظ في جدول saved_quizzes
+        # تنفيذ الحفظ
         supabase.table("saved_quizzes").insert(payload).execute()
         
-        # رسالة النجاح النهائية
+        # رسالة النجاح
         success_msg = (
             f"✅ **تم حفظ المسابقة بنجاح!**\n\n"
-            f"🏷 الاسم: {quiz_name}\n"
-            f"📊 الأقسام: {len(selected_cats)}\n"
-            f"🚀 ستجدها الآن في 'قائمة مسابقاتك اكتب كلمة مسابقة' لرؤية مسابقاتك ."
+            f"🏷 الاسم: `{quiz_name}`\n"
+            f"⏱ الوقت: `{payload['time_limit']} ثانية`\n"
+            f"📊 الأقسام: `{len(selected_cats)}` قسم\n\n"
+            f"🚀 ستجدها الآن في 'قائمة مسابقاتك'.. اكتب كلمة **مسابقة** لرؤية مسابقاتك."
         )
         await message.answer(success_msg, parse_mode="Markdown")
         await state.finish() # تنظيف الحالة
 
     except Exception as e:
+        import logging
         logging.error(f"Error saving quiz: {e}")
-        await message.answer("❌ حدث خطأ أثناء الحفظ! تأكد من إعدادات جدول saved_quizzes في سوبابيس.")
-
+        await message.answer("❌ حدث خطأ أثناء الحفظ! تأكد من إعدادات جدول `saved_quizzes` في سوبابيس.")
 # --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
 @dp.message_handler(lambda message: message.text == "مسابقة")
 @dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
