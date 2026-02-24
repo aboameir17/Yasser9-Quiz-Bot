@@ -267,7 +267,9 @@ class Form(StatesGroup):
     waiting_for_ans1 = State()
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
-
+    
+    # السطر اللي كان ناقص وسبب المشكلة:
+    waiting_for_quiz_name = State()
 # --- 1. الأوامر الأساسية ونظام التفعيل الاحترافي ---
 
 @dp.message_handler(commands=['start'])
