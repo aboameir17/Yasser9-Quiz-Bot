@@ -1022,6 +1022,20 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
 
     new_data = await state.get_data()
     await render_final_settings_panel(c.message, new_data, owner_id)
+  # 🔄 تحديث اللوحة فوراً بالبيانات الجديدة
+    new_data = await state.get_data()
+    await render_final_settings_panel(c.message, new_data, owner_id)
+
+# --- 6. معالج الحفظ (طلب الاسم) ---
+@dp.callback_query_handler(lambda c: c.data.startswith('start_quiz_'), state="*")
+async def start_save_process(c: types.CallbackQuery, state: FSMContext):
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: 
+        return await c.answer("⚠️ عذراً، هذا الأمر ليس لك!", show_alert=True)
+    
+    await c.answer()
+    await c.message.edit_text("📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**")
+    await state.set_state("wait_for_name")
 
 # --- 6. معالج الحفظ النهائي (تم إصلاح حفظ التلميحات) ---
 @dp.message_handler(state="wait_for_name")
