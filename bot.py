@@ -1026,62 +1026,42 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     new_data = await state.get_data()
     await render_final_settings_panel(c.message, new_data, owner_id)
 
-# --- 6. معالج الحفظ (الذي لا يعلق) --- #
-
+# --- 6. معالج الحفظ (طلب الاسم) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('start_quiz_'), state="*")
 async def start_save_process(c: types.CallbackQuery, state: FSMContext):
     owner_id = int(c.data.split('_')[-1])
-    
-    # 1. التحقق من الهوية
     if c.from_user.id != owner_id: 
         return await c.answer("⚠️ عذراً، هذا الأمر ليس لك!", show_alert=True)
     
-    # 2. جلب البيانات من الذاكرة للتأكد من وجودها
-    data = await state.get_data()
-    if not data.get('selected_cats'):
-        return await c.answer("⚠️ لا توجد أقسام مختارة! اختر قسماً قبل الحفظ.", show_alert=True)
+    await c.answer()
+    await c.message.edit_text("📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**")
+    await state.set_state("wait_for_name")
 
-    await c.answer("جاري التحضير... ⏳")
-    
-    # 3. تفعيل حالة "انتظار الاسم" (تأكد من وجودها في كلاس Form)
-    await Form.waiting_for_quiz_name.set() 
-    
-    try:
-        await c.message.edit_text(
-            "📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**\n\n*(الإعدادات الحالية سيتم ربطها بهذا الاسم)*",
-            reply_markup=InlineKeyboardMarkup().add(
-                InlineKeyboardButton("❌ إلغاء الحفظ", callback_data=f"custom_add_{owner_id}")
-            ),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        await c.message.answer("📝 **أرسل الآن اسماً لمسابقتك:**")
-
-# --- 7. معالج استقبال الاسم والحفظ النهائي في سوبابيس --- #
-
-@dp.message_handler(state=Form.waiting_for_quiz_name)
+# --- 6. معالج الحفظ النهائي في قاعدة البيانات ---
+@dp.message_handler(state="wait_for_name")
 async def process_quiz_name(message: types.Message, state: FSMContext):
-    import json
     quiz_name = message.text.strip()
     data = await state.get_data()
     selected_cats = data.get('selected_cats', [])
-    user_id = message.from_user.id
+    
+    # التأكد من وجود أقسام مختارة
+    if not selected_cats:
+        await message.answer("⚠️ خطأ: لم يتم اختيار أي قسم! ابدأ التهيئة من جديد.")
+        await state.finish()
+        return
 
-    # تحويل الأقسام لصيغة نصية ليفهمها سوبابيس (كما في ملفك الـ CSV)
-    cats_json = json.dumps([str(c) for c in selected_cats])
-
+    # تجهيز البيانات (Payload) لـ Supabase من الذاكرة
     payload = {
-        "created_by": str(user_id),
+        "created_by": str(message.from_user.id),
         "quiz_name": quiz_name,
         "chat_id": str(message.chat.id), 
-        "is_public": data.get('is_broadcast', True),
-        "time_limit": int(data.get('quiz_time', 15)),
-        "questions_count": int(data.get('quiz_count', 10)),
+        "is_public": data.get('is_broadcast', False),
+        "time_limit": data.get('quiz_time', 15),
+        "questions_count": data.get('quiz_count', 10),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
-        "hint_enabled": bool(data.get('quiz_hint_bool', False)),
-        "smart_hint": bool(data.get('quiz_smart_bool', False)),
-        "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
-        "cats": cats_json  
+        "hint_enabled": data.get('quiz_hint_bool', False),
+        "is_bot_quiz": data.get('is_bot_quiz', False),
+        "cats": selected_cats  
     }
 
     try:
