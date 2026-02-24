@@ -993,16 +993,18 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     if action in ['tog', 'cyc', 'set']:
         await c.answer()
         
-        # محرك التلميح الثلاثي (مغلق -> عادي -> ذكي)
+        # محرك التلميح الموحد (يا شغال الكل يا طافي الكل)
         if action == 'cyc' and data_parts[1] == 'hint':
-            is_enabled = data.get('quiz_hint_bool', False)
-            is_smart = data.get('quiz_smart_bool', False)
-            if not is_enabled:
-                await state.update_data(quiz_hint_bool=True, quiz_smart_bool=False)
-            elif is_enabled and not is_smart:
+            is_currently_on = data.get('quiz_hint_bool', False)
+            
+            if not is_currently_on:
+                # إذا كان طافي -> شغله وفعل الحالتين (عادي وذكي) معاً
                 await state.update_data(quiz_hint_bool=True, quiz_smart_bool=True)
+                await c.answer("✅ تم تفعيل التلميحات ")
             else:
+                # إذا كان شغال -> طفي كل شيء
                 await state.update_data(quiz_hint_bool=False, quiz_smart_bool=False)
+                await c.answer("❌ تم إيقاف التلميحات")
         
         # محرك الوقت
         elif action == 'cyc' and data_parts[1] == 'time':
