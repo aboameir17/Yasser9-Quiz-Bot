@@ -761,7 +761,7 @@ async def execute_delete_question(c: types.CallbackQuery):
     await delete_questions_menu(c)
 
 
-# --- 7. حذف القسم نهائياً (مع التأكيد) ---
+# --- 7. حذف القسم نهائياً (النسخة المصلحة) ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('confirm_del_cat_'))
 async def confirm_delete_cat(c: types.CallbackQuery):
@@ -777,6 +777,7 @@ async def confirm_delete_cat(c: types.CallbackQuery):
         InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_cat_{cat_id}_{owner_id}"),
         InlineKeyboardButton("❌ لا، تراجع", callback_data=f"manage_questions_{cat_id}_{owner_id}")
     )
+    # تعديل نص الرسالة الحالية لطلب التأكيد
     await c.message.edit_text("⚠️ هل أنت متأكد من حذف هذا القسم نهائياً مع كل أسئلته؟", reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data.startswith('final_del_cat_'))
@@ -785,12 +786,16 @@ async def execute_delete_cat(c: types.CallbackQuery):
     cat_id = data[3]
     owner_id = int(data[4])
 
-    supabase.table("categories").delete().eq("id", cat_id).execute()
-    await c.answer("🗑️ تم حذف القسم بنجاح", show_alert=True)
-    
-    # العودة للقائمة الرئيسية للأقسام
-    # تأكد أن دالة custom_add_menu معرفة وتستقبل owner_id
-    await custom_add_menu(c, owner_id=owner_id)
+    # 1. تنفيذ الحذف في سوبابيس
+    try:
+        supabase.table("categories").delete().eq("id", cat_id).execute()
+        await c.answer("🗑️ تم حذف القسم بنجاح", show_alert=True)
+    except Exception as e:
+        return await c.answer("❌ فشل الحذف من قاعدة البيانات")
+
+    # 2. العودة لقائمة الأقسام بتحديث نفس الرسالة
+    # استخدمنا await لضمان التنفيذ وتمرير المتغيرات لعمل Edit
+    await custom_add_menu(c)
     
 # --- 8. نظام عرض قائمة الأقسام (تصفية وحماية) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('list_cats_'))
