@@ -1051,17 +1051,18 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
     # تحويل الأقسام لصيغة JSON نصية كما في ملفك
     cats_json = json.dumps([str(c) for c in data.get('selected_cats', [])])
 
+   # تجهيز البيانات (المعدل لحفظ آيدي المستخدم كآيدي للدردشة)
     payload = {
         "created_by": str(message.from_user.id),
         "quiz_name": quiz_name,
-        "chat_id": str(message.chat.id), 
+        "chat_id": str(message.from_user.id), # التعديل هنا: حفظ آيدي المستخدم لضمان ظهورها في قائمته
         "time_limit": int(data.get('quiz_time', 15)),
         "questions_count": int(data.get('quiz_count', 10)),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
         "hint_enabled": bool(data.get('quiz_hint_bool', False)),
-        "smart_hint": bool(data.get('quiz_smart_bool', False)), # الحفظ الصحيح للتلميح الذكي
+        "smart_hint": bool(data.get('quiz_smart_bool', False)),
         "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
-        "cats": cats_json,
+        "cats": json.dumps([str(c) for c in data.get('selected_cats', [])]),
         "is_public": True 
     }
 
