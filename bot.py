@@ -406,7 +406,6 @@ async def custom_add_menu(c: types.CallbackQuery, state: FSMContext = None):
     if state:
         await state.finish()
     
-    # استخراج الآيدي بطريقة ذكية
     data_parts = c.data.split('_')
     try:
         owner_id = int(data_parts[-1])
@@ -416,9 +415,9 @@ async def custom_add_menu(c: types.CallbackQuery, state: FSMContext = None):
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ هذي اللوحة مش حقك! 😂", show_alert=True)
 
-    # استدعاء كيبوردك المرتب (إضافة، قائمة، رجوع)
     kb = get_categories_kb(owner_id)
 
+    # هنا نستخدم edit_text لضمان التعديل بدل الإرسال الجديد
     await c.message.edit_text(
         "⚙️ **لوحة إعدادات أقسامك الخاصة:**\n\nاختر من القائمة أدناه لإدارة أقسامك وأسئلتك:", 
         reply_markup=kb, 
@@ -426,10 +425,27 @@ async def custom_add_menu(c: types.CallbackQuery, state: FSMContext = None):
     )
     await c.answer()
 
+@dp.callback_query_handler(lambda c: c.data.startswith('back_to_main'), state="*")
+async def back_to_main_panel(c: types.CallbackQuery, state: FSMContext = None):
+    if state:
+        await state.finish()
+    
+    owner_id = int(c.data.split('_')[-1])
+    
+    # استدعاء كيبورد لوحة التحكم الرئيسية
+    kb = get_main_control_kb(owner_id)
+
+    # التعديل الجوهري: نستخدم edit_text ليحذف اللوحة السابقة وتظهر الرئيسية مكانها
+    await c.message.edit_text(
+        f"👋 أهلاً بك في لوحة إعدادات المسابقات الخاصة\n👑 المطور: @Ya_79k",
+        reply_markup=kb,
+        parse_mode="Markdown"
+    )
+    await c.answer("🔙 تمت العودة للقائمة الرئيسية")
+
 @dp.callback_query_handler(lambda c: c.data.startswith('add_new_cat'), state="*")
 async def btn_add_cat(c: types.CallbackQuery):
     owner_id = int(c.data.split('_')[-1])
-    
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ لا يمكنك الإضافة في لوحة غيرك!", show_alert=True)
 
@@ -439,7 +455,7 @@ async def btn_add_cat(c: types.CallbackQuery):
     kb = InlineKeyboardMarkup().add(
         InlineKeyboardButton("🔙 إلغاء والعودة", callback_data=f"custom_add_{owner_id}")
     )
-    # تحديث الرسالة لطلب الاسم (يمنع التراكم)
+    # تحديث الرسالة لطلب الاسم لمنع التراكم
     await c.message.edit_text("📝 **اكتب اسم القسم الجديد الآن:**", reply_markup=kb, parse_mode="Markdown")
 
 @dp.message_handler(state=Form.waiting_for_cat_name)
@@ -448,7 +464,6 @@ async def save_cat(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     
     try:
-        # إدراج القسم وربطه بصاحبه فقط
         supabase.table("categories").insert({
             "name": cat_name, 
             "created_by": str(user_id)
@@ -456,27 +471,16 @@ async def save_cat(message: types.Message, state: FSMContext):
         
         await state.finish()
         
-        # زر العودة فقط (تم حذف خيار إضافة قسم آخر)
+        # عند النجاح، نرسل رسالة جديدة كإشعار ثم نعطيه زر العودة الذي يقوم بالتعديل
         kb = InlineKeyboardMarkup().add(
             InlineKeyboardButton("🔙 العودة للأقسام", callback_data=f"custom_add_{user_id}")
         )
         await message.answer(f"✅ تم حفظ القسم **'{cat_name}'** بنجاح.", reply_markup=kb, parse_mode="Markdown")
 
     except Exception as e:
-        logging.error(f"Error saving category: {e}")
         await state.finish()
-        
-        # في حال الخطأ، جلب أقسام المستخدم الحالي فقط
-        res = supabase.table("categories").select("*").eq("created_by", str(user_id)).execute()
-        categories = res.data
-
-        kb = InlineKeyboardMarkup(row_width=1)
-        if categories:
-            for cat in categories:
-                kb.add(InlineKeyboardButton(f"📂 {cat['name']}", callback_data=f"manage_questions_{cat['id']}_{user_id}"))
-
-        kb.add(InlineKeyboardButton("⬅️ الرجوع", callback_data=f"custom_add_{user_id}"))
-        await message.answer("⚠️ حدث خطأ أو الاسم مكرر. إليك أقسامك الحالية:", reply_markup=kb)
+        kb = InlineKeyboardMarkup().add(InlineKeyboardButton("⬅️ الرجوع", callback_data=f"custom_add_{user_id}"))
+        await message.answer("⚠️ حدث خطأ أو الاسم مكرر. حاول مرة أخرى.", reply_markup=kb)
 
 # --- 1. نافذة إعدادات القسم (عند الضغط على اسمه) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('manage_questions_'))
