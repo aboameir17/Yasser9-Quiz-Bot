@@ -1026,52 +1026,87 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     new_data = await state.get_data()
     await render_final_settings_panel(c.message, new_data, owner_id)
 
-# --- 6. معالج الحفظ النهائي (إصلاح الـ Payload) ---
-@dp.message_handler(state="wait_for_name")
+# --- 6. معالج الحفظ (الذي لا يعلق) --- #
+
+@dp.callback_query_handler(lambda c: c.data.startswith('start_quiz_'), state="*")
+async def start_save_process(c: types.CallbackQuery, state: FSMContext):
+    owner_id = int(c.data.split('_')[-1])
+    
+    # 1. التحقق من الهوية
+    if c.from_user.id != owner_id: 
+        return await c.answer("⚠️ عذراً، هذا الأمر ليس لك!", show_alert=True)
+    
+    # 2. جلب البيانات من الذاكرة للتأكد من وجودها
+    data = await state.get_data()
+    if not data.get('selected_cats'):
+        return await c.answer("⚠️ لا توجد أقسام مختارة! اختر قسماً قبل الحفظ.", show_alert=True)
+
+    await c.answer("جاري التحضير... ⏳")
+    
+    # 3. تفعيل حالة "انتظار الاسم" (تأكد من وجودها في كلاس Form)
+    await Form.waiting_for_quiz_name.set() 
+    
+    try:
+        await c.message.edit_text(
+            "📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**\n\n*(الإعدادات الحالية سيتم ربطها بهذا الاسم)*",
+            reply_markup=InlineKeyboardMarkup().add(
+                InlineKeyboardButton("❌ إلغاء الحفظ", callback_data=f"custom_add_{owner_id}")
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        await c.message.answer("📝 **أرسل الآن اسماً لمسابقتك:**")
+
+# --- 7. معالج استقبال الاسم والحفظ النهائي في سوبابيس --- #
+
+@dp.message_handler(state=Form.waiting_for_quiz_name)
 async def process_quiz_name(message: types.Message, state: FSMContext):
+    import json
     quiz_name = message.text.strip()
     data = await state.get_data()
     selected_cats = data.get('selected_cats', [])
-    
-    if not selected_cats:
-        await message.answer("⚠️ خطأ: لم يتم اختيار أقسام!")
-        return await state.finish()
+    user_id = message.from_user.id
 
-    # الربط الصحيح مع أعمدة Supabase التي رأيناها في الملف
+    # تحويل الأقسام لصيغة نصية ليفهمها سوبابيس (كما في ملفك الـ CSV)
+    cats_json = json.dumps([str(c) for c in selected_cats])
+
     payload = {
-        "created_by": str(message.from_user.id),
+        "created_by": str(user_id),
         "quiz_name": quiz_name,
         "chat_id": str(message.chat.id), 
-        "is_public": data.get('is_broadcast', False),
-        "time_limit": data.get('quiz_time', 15),
-        "questions_count": data.get('quiz_count', 10),
+        "is_public": data.get('is_broadcast', True),
+        "time_limit": int(data.get('quiz_time', 15)),
+        "questions_count": int(data.get('quiz_count', 10)),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
-        "hint_enabled": data.get('quiz_hint_bool', False), # العمود الأول
-        "smart_hint": data.get('quiz_smart_bool', False),  # العمود الثاني المصلح
-        "is_bot_quiz": data.get('is_bot_quiz', False),
-        "cats": selected_cats  
+        "hint_enabled": bool(data.get('quiz_hint_bool', False)),
+        "smart_hint": bool(data.get('quiz_smart_bool', False)),
+        "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
+        "cats": cats_json  
     }
 
     try:
+        # تنفيذ الحفظ في الجدول
         supabase.table("saved_quizzes").insert(payload).execute()
         
-        # تنسيق رسالة النجاح بشكل أفضل
-        hint_status = "✨ ذكي" if payload['smart_hint'] else ("💡 عادي" if payload['hint_enabled'] else "❌ معطل")
-        
-        await message.answer(
-            f"✅ **تم الحفظ بنجاح!**\n\n"
-            f"🏷 الاسم: `{quiz_name}`\n"
-            f"🧩 التلميح: **{hint_status}**\n"
-            f"⏱ الوقت: `{payload['time_limit']}ث` | 📊 الأسئلة: `{payload['questions_count']}`\n\n"
-            f"🚀 اكتب **مسابقة** لبدء اللعب!", 
-            parse_mode="Markdown"
-        )
+        # تنظيف الحالة
         await state.finish()
 
+        # رسالة النجاح النهائية
+        h_type = "✨ ذكي" if payload['smart_hint'] else ("💡 عادي" if payload['hint_enabled'] else "❌ معطل")
+        
+        await message.answer(
+            f"✅ **تم الحفظ بنجاح يا بطل!**\n\n"
+            f"🏷 الاسم: `{quiz_name}`\n"
+            f"🧩 التلميح: **{h_type}**\n"
+            f"⏱ الوقت: `{payload['time_limit']}ث` | 📊 الأسئلة: `{payload['questions_count']}`\n\n"
+            f"🚀 اكتب **مسابقة** لبدء اللعب الآن!",
+            parse_mode="Markdown"
+        )
+
     except Exception as e:
+        import logging
         logging.error(f"Save Error: {e}")
-        await message.answer("❌ حدث خطأ في سوبابيس، تأكد من أسماء الأعمدة.")
-    
+        await message.answer(f"❌ حدث خطأ أثناء الحفظ في سوبابيس.\nالسبب: `{str(e)[:50]}`")
 # --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
 @dp.message_handler(lambda message: message.text == "مسابقة")
 @dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
