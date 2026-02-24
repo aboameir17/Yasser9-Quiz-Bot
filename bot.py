@@ -1047,47 +1047,42 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
     quiz_name = message.text.strip()
     data = await state.get_data()
     
-    # 1. تجهيز الأقسام كقائمة نصوص عادية (بدون json.dumps عشان سوبابيس ما يضيف سلاشات)
+    # 1. تجهيز الأقسام كقائمة نصوص نظيفة (بدون json.dumps يدوي)
+    # هذا السطر هو اللي يخليها تنحفظ ["14", "16"]
     selected_cats = data.get('selected_cats', [])
-    clean_list = [str(c) for c in selected_cats] # النتيجة: ["13", "14"]
+    clean_list = [str(c) for c in selected_cats] 
 
-    # 2. آيدي المستخدم (عشان تنحفظ باسمك أنت مش باسم الجروب)
+    # 2. الحصول على آيدي المستخدم لضمان الحفظ الشخصي
     u_id = str(message.from_user.id)
 
-    # 3. الـ Payload النظيف والمختصر
+    # 3. بناء الـ Payload (نرسل القائمة مباشرة للمكتبة)
     payload = {
         "created_by": u_id,
         "quiz_name": quiz_name,
-        "chat_id": u_id,  # خلاص عرفنا إنه ماله داعي بس خله كذا عشان ما يزعل الجدول
+        "chat_id": u_id, # حفظ آيدي الشخص وليس القروب
         "time_limit": int(data.get('quiz_time', 15)),
         "questions_count": int(data.get('quiz_count', 10)),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
         "hint_enabled": bool(data.get('quiz_hint_bool', False)),
         "smart_hint": bool(data.get('quiz_smart_bool', False)),
         "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
-        "cats": clean_list, # ارسل القائمة مباشرة للمكتبة عشان تطلع نظيفة في الـ CSV
+        "cats": clean_list, # مرر القائمة كـ List مباشرة هنا
         "is_public": True 
     }
 
     try:
-        # الحفظ في سوبابيس
+        # تنفيذ الحفظ في سوبابيس
         supabase.table("saved_quizzes").insert(payload).execute()
         
-        user_name = message.from_user.first_name
-        h_status = "✨ ذكي" if payload['smart_hint'] else ("💡 عادي" if payload['hint_enabled'] else "❌ معطل")
-        
         await message.answer(
-            f"✅ **أبشرك انحفظت يا {user_name}!**\n\n"
+            f"✅ **تم الحفظ بنجاح يا {message.from_user.first_name}!**\n\n"
             f"📝 المسابقة: **{quiz_name}**\n"
-            f"💡 التلميح: **{h_status}**\n\n"
-            f"🚀 الحين خذ لك استراحة وشاهي، شغلك صار توب! اكتب **مسابقة** وجربها.", 
-            parse_mode="Markdown"
+            f"📂 الأقسام: `{clean_list}`\n\n"
+            f"🚀 الآن البيانات في سوبابيس نظيفة 100%."
         )
-        
-        await state.finish() 
-
+        await state.finish()
     except Exception as e:
-        await message.answer(f"❌ يا ساتر فيه خطأ: `{str(e)[:50]}`")
+        await message.answer(f"❌ خطأ في الحفظ: `{str(e)[:50]}`")
 # --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
 @dp.message_handler(lambda message: message.text == "مسابقة")
 @dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
