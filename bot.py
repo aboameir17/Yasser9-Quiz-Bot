@@ -346,11 +346,16 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
         await c.answer("تم إغلاق اللوحة ✅")
         return await c.message.delete()
 
-    # 2️⃣ [ زر الرجوع ]
+    # 2️⃣ [ زر الرجوع ] - النسخة المصلحة (التعديل بدل الإرسال)
     elif action == "back":
         await state.finish()
         await c.answer("🔙 جاري العودة...")
-        return await control_panel(c.message, owner_id)
+        # بدلاً من استدعاء control_panel التي ترسل رسالة جديدة، نعدل الرسالة الحالية
+        return await c.message.edit_text(
+            f"👋 **أهلاً بك في لوحة التحكم الرئيسية**\n\nاختر من الأسفل ما تود القيام به:",
+            reply_markup=get_main_control_kb(owner_id), # تأكد من وضع دالة الكيبورد الرئيسي هنا
+            parse_mode="Markdown"
+        )
 
     # 3️⃣ [ زر إضافة خاصة ]
     elif action == "custom":
