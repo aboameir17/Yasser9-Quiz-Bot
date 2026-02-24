@@ -1040,7 +1040,7 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
             )
         )
 
-# --- 7. استقبال الاسم والحفظ النهائي في سوبابيس --- #
+# --- 7. استقبال الاسم والحفظ النهائي المصلح (لا صبنة بعد اليوم) --- #
 
 @dp.message_handler(state=Form.waiting_for_quiz_name)
 async def process_quiz_name_final(message: types.Message, state: FSMContext):
@@ -1048,43 +1048,50 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
     quiz_name = message.text.strip()
     data = await state.get_data()
     
-    # تحويل الأقسام لصيغة JSON نصية كما في ملفك
-    cats_json = json.dumps([str(c) for c in data.get('selected_cats', [])])
+    # 1. تجهيز الأقسام لتكون ["13", "14"] بدون دبل كوتيشن زائد أو علامات هروب
+    selected_cats = data.get('selected_cats', [])
+    clean_list = [str(c) for c in selected_cats]
+    cats_json = json.dumps(clean_list) # سيحفظها سوبابيس كـ ["13"]
 
-   # تجهيز البيانات (المعدل لحفظ آيدي المستخدم كآيدي للدردشة)
+    # 2. الحصول على آيدي المستخدم (لضمان الحفظ الشخصي وليس القروب)
+    user_id_str = str(message.from_user.id)
+
+    # 3. بناء الـ Payload النظيف
     payload = {
-        "created_by": str(message.from_user.id),
+        "created_by": user_id_str,
         "quiz_name": quiz_name,
-        "chat_id": str(message.from_user.id), # التعديل هنا: حفظ آيدي المستخدم لضمان ظهورها في قائمته
+        "chat_id": user_id_str, # تم التعديل ليحفظ آيدي المستخدم دائماً
         "time_limit": int(data.get('quiz_time', 15)),
         "questions_count": int(data.get('quiz_count', 10)),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
         "hint_enabled": bool(data.get('quiz_hint_bool', False)),
         "smart_hint": bool(data.get('quiz_smart_bool', False)),
         "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
-        "cats": json.dumps([str(c) for c in data.get('selected_cats', [])]),
+        "cats": cats_json, # الحفظ بصيغة JSON نظيفة
         "is_public": True 
     }
 
     try:
         # تنفيذ الحفظ في سوبابيس
         supabase.table("saved_quizzes").insert(payload).execute()
-        await state.finish() 
-
-        # استخراج اسم المستخدم الحقيقي من تليجرام
-        user_name = message.from_user.first_name
         
-        # تحديد حالة التلميح بناءً على الـ Payload
+        # استخراج اسم المستخدم بدلاً من "ياسر"
+        user_display_name = message.from_user.first_name
+        
+        # تحديد حالة التلميح للرسالة
         h_status = "✨ ذكي" if payload['smart_hint'] else ("💡 عادي" if payload['hint_enabled'] else "❌ معطل")
         
         await message.answer(
-            f"✅ **تم الحفظ بنجاح يا {user_name}!**\n\n"
+            f"✅ **تم الحفظ بنجاح يا {user_display_name}!**\n\n"
             f"📝 المسابقة: **{quiz_name}**\n"
             f"💡 التلميح: **{h_status}**\n"
             f"⏱ الوقت: `{payload['time_limit']} ثانية`\n\n"
-            f"🚀 أرسل كلمة **مسابقة** لبدء اللعب!", 
+            f"🚀 أرسل كلمة **مسابقة** لبدء اللعب من قائمتك!", 
             parse_mode="Markdown"
         )
+        
+        await state.finish() # تنظيف الحالة بعد النجاح
+
     except Exception as e:
         import logging
         logging.error(f"Save Error: {e}")
