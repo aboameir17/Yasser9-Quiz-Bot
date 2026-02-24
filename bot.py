@@ -1040,62 +1040,54 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
             )
         )
 
-# --- 7. استقبال الاسم والحفظ النهائي المصلح (لا صبنة بعد اليوم) --- #
+# --- 7. استقبال الاسم والحفظ النهائي (النسخة المريحة للأعصاب) --- #
 
 @dp.message_handler(state=Form.waiting_for_quiz_name)
 async def process_quiz_name_final(message: types.Message, state: FSMContext):
-    import json
     quiz_name = message.text.strip()
     data = await state.get_data()
     
-    # 1. تجهيز الأقسام لتكون ["13", "14"] بدون دبل كوتيشن زائد أو علامات هروب
+    # 1. تجهيز الأقسام كقائمة نصوص عادية (بدون json.dumps عشان سوبابيس ما يضيف سلاشات)
     selected_cats = data.get('selected_cats', [])
-    clean_list = [str(c) for c in selected_cats]
-    cats_json = json.dumps(clean_list) # سيحفظها سوبابيس كـ ["13"]
+    clean_list = [str(c) for c in selected_cats] # النتيجة: ["13", "14"]
 
-    # 2. الحصول على آيدي المستخدم (لضمان الحفظ الشخصي وليس القروب)
-    user_id_str = str(message.from_user.id)
+    # 2. آيدي المستخدم (عشان تنحفظ باسمك أنت مش باسم الجروب)
+    u_id = str(message.from_user.id)
 
-    # 3. بناء الـ Payload النظيف
+    # 3. الـ Payload النظيف والمختصر
     payload = {
-        "created_by": user_id_str,
+        "created_by": u_id,
         "quiz_name": quiz_name,
-        "chat_id": user_id_str, # تم التعديل ليحفظ آيدي المستخدم دائماً
+        "chat_id": u_id,  # خلاص عرفنا إنه ماله داعي بس خله كذا عشان ما يزعل الجدول
         "time_limit": int(data.get('quiz_time', 15)),
         "questions_count": int(data.get('quiz_count', 10)),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
         "hint_enabled": bool(data.get('quiz_hint_bool', False)),
         "smart_hint": bool(data.get('quiz_smart_bool', False)),
         "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
-        "cats": cats_json, # الحفظ بصيغة JSON نظيفة
+        "cats": clean_list, # ارسل القائمة مباشرة للمكتبة عشان تطلع نظيفة في الـ CSV
         "is_public": True 
     }
 
     try:
-        # تنفيذ الحفظ في سوبابيس
+        # الحفظ في سوبابيس
         supabase.table("saved_quizzes").insert(payload).execute()
         
-        # استخراج اسم المستخدم بدلاً من "ياسر"
-        user_display_name = message.from_user.first_name
-        
-        # تحديد حالة التلميح للرسالة
+        user_name = message.from_user.first_name
         h_status = "✨ ذكي" if payload['smart_hint'] else ("💡 عادي" if payload['hint_enabled'] else "❌ معطل")
         
         await message.answer(
-            f"✅ **تم الحفظ بنجاح يا {user_display_name}!**\n\n"
+            f"✅ **أبشرك انحفظت يا {user_name}!**\n\n"
             f"📝 المسابقة: **{quiz_name}**\n"
-            f"💡 التلميح: **{h_status}**\n"
-            f"⏱ الوقت: `{payload['time_limit']} ثانية`\n\n"
-            f"🚀 أرسل كلمة **مسابقة** لبدء اللعب من قائمتك!", 
+            f"💡 التلميح: **{h_status}**\n\n"
+            f"🚀 الحين خذ لك استراحة وشاهي، شغلك صار توب! اكتب **مسابقة** وجربها.", 
             parse_mode="Markdown"
         )
         
-        await state.finish() # تنظيف الحالة بعد النجاح
+        await state.finish() 
 
     except Exception as e:
-        import logging
-        logging.error(f"Save Error: {e}")
-        await message.answer(f"❌ حدث خطأ أثناء الحفظ.\nالسبب: `{str(e)[:50]}`")
+        await message.answer(f"❌ يا ساتر فيه خطأ: `{str(e)[:50]}`")
 # --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
 @dp.message_handler(lambda message: message.text == "مسابقة")
 @dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
