@@ -975,8 +975,9 @@ async def final_quiz_settings_panel(c: types.CallbackQuery, state: FSMContext):
     await render_final_settings_panel(c.message, data, owner_id)
 
 
-# --- 5. المحركات الموحدة (المصلحة والسريرعة جداً) ---
-@dp.callback_query_handler(lambda c: c.data.startswith(('tog_', 'cyc_', 'set_')), state="*")
+# --- [ 5 + 6 ] المحرك الموحد ومعالج الحفظ النهائي --- #
+
+@dp.callback_query_handler(lambda c: c.data.startswith(('tog_', 'cyc_', 'set_', 'start_quiz_')), state="*")
 async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
     action = data_parts[0] 
@@ -985,107 +986,107 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     if c.from_user.id != owner_id:
         return await c.answer("⚠️ لا تتدخل في إعدادات غيرك! 😂", show_alert=True)
 
-    await c.answer() 
     data = await state.get_data()
-    
-    # 1️⃣ محرك النطاق
-    if action == 'tog' and data_parts[1] == 'broad':
-        await state.update_data(is_broadcast=not data.get('is_broadcast', False))
-    
-    # 2️⃣ محرك التلميح المطور (تبديل: مغلق ❌ -> عادي 💡 -> ذكي ✨)
-    elif action == 'cyc' and data_parts[1] == 'hint':
-        curr_h = data.get('quiz_hint_bool', False)
-        curr_s = data.get('quiz_smart_bool', False)
+
+    # 1️⃣ --- قسم المحركات (التعديل اللحظي) ---
+    if action in ['tog', 'cyc', 'set']:
+        await c.answer()
         
-        if not curr_h: # كان مغلق -> شغله عادي
-            await state.update_data(quiz_hint_bool=True, quiz_smart_bool=False)
-        elif curr_h and not curr_s: # كان عادي -> شغله ذكي
-            await state.update_data(quiz_hint_bool=True, quiz_smart_bool=True)
-        else: # كان ذكي -> أغلقه تماماً
-            await state.update_data(quiz_hint_bool=False, quiz_smart_bool=False)
-    
-    # 3️⃣ محرك الوقت
-    elif action == 'cyc' and data_parts[1] == 'time':
-        curr = data.get('quiz_time', 15)
-        next_t = 20 if curr == 15 else (30 if curr == 20 else (45 if curr == 30 else 15))
-        await state.update_data(quiz_time=next_t)
+        # محرك التلميح الثلاثي (مغلق -> عادي -> ذكي)
+        if action == 'cyc' and data_parts[1] == 'hint':
+            is_enabled = data.get('quiz_hint_bool', False)
+            is_smart = data.get('quiz_smart_bool', False)
+            if not is_enabled:
+                await state.update_data(quiz_hint_bool=True, quiz_smart_bool=False)
+            elif is_enabled and not is_smart:
+                await state.update_data(quiz_hint_bool=True, quiz_smart_bool=True)
+            else:
+                await state.update_data(quiz_hint_bool=False, quiz_smart_bool=False)
         
-    # 4️⃣ محرك النظام
-    elif action == 'cyc' and data_parts[1] == 'mode':
-        curr_m = data.get('quiz_mode', 'السرعة ⚡')
-        next_m = 'الوقت الكامل ⏳' if curr_m == 'السرعة ⚡' else 'السرعة ⚡'
-        await state.update_data(quiz_mode=next_m)
+        # محرك الوقت
+        elif action == 'cyc' and data_parts[1] == 'time':
+            curr = data.get('quiz_time', 15)
+            next_t = 20 if curr == 15 else (30 if curr == 20 else (45 if curr == 30 else 15))
+            await state.update_data(quiz_time=next_t)
 
-    # 5️⃣ محرك عدد الأسئلة
-    elif action == 'set' and data_parts[1] == 'cnt':
-        await state.update_data(quiz_count=int(data_parts[2]))
+        # محرك النظام (سرعة/كامل)
+        elif action == 'cyc' and data_parts[1] == 'mode':
+            curr_m = data.get('quiz_mode', 'السرعة ⚡')
+            next_m = 'الوقت الكامل ⏳' if curr_m == 'السرعة ⚡' else 'السرعة ⚡'
+            await state.update_data(quiz_mode=next_m)
 
-    new_data = await state.get_data()
-    await render_final_settings_panel(c.message, new_data, owner_id)
-  # 🔄 تحديث اللوحة فوراً بالبيانات الجديدة
-    new_data = await state.get_data()
-    await render_final_settings_panel(c.message, new_data, owner_id)
+        # محرك عدد الأسئلة
+        elif action == 'set' and data_parts[1] == 'cnt':
+            await state.update_data(quiz_count=int(data_parts[2]))
 
-# --- 6. معالج الحفظ (طلب الاسم) ---
-@dp.callback_query_handler(lambda c: c.data.startswith('start_quiz_'), state="*")
-async def start_save_process(c: types.CallbackQuery, state: FSMContext):
-    owner_id = int(c.data.split('_')[-1])
-    if c.from_user.id != owner_id: 
-        return await c.answer("⚠️ عذراً، هذا الأمر ليس لك!", show_alert=True)
-    
-    await c.answer()
-    await c.message.edit_text("📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**")
-    await state.set_state("wait_for_name")
+        # تحديث اللوحة فوراً
+        new_data = await state.get_data()
+        return await render_final_settings_panel(c.message, new_data, owner_id)
 
-# --- 6. معالج الحفظ النهائي (تم إصلاح حفظ التلميحات) ---
-@dp.message_handler(state="wait_for_name")
-async def process_quiz_name(message: types.Message, state: FSMContext):
+    # 2️⃣ --- قسم بدء الحفظ (عند ضغط زر حفظ وبدء) ---
+    elif action == 'start' and data_parts[1] == 'quiz':
+        if not data.get('selected_cats'):
+            return await c.answer("⚠️ اختر قسماً واحداً على الأقل!", show_alert=True)
+        
+        await c.answer("📝 جاري التحضير...")
+        # تفعيل حالة انتظار الاسم
+        await Form.waiting_for_quiz_name.set() 
+        
+        return await c.message.edit_text(
+            "📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**\n\n*(سيتم حفظ التلميحات والإعدادات تحت هذا الاسم)*",
+            reply_markup=InlineKeyboardMarkup().add(
+                InlineKeyboardButton("❌ إلغاء", callback_data=f"final_quiz_settings_{owner_id}")
+            )
+        )
+
+# --- 7. استقبال الاسم والحفظ النهائي في سوبابيس --- #
+
+@dp.message_handler(state=Form.waiting_for_quiz_name)
+async def process_quiz_name_final(message: types.Message, state: FSMContext):
     import json
     quiz_name = message.text.strip()
     data = await state.get_data()
-    selected_cats = data.get('selected_cats', [])
     
-    if not selected_cats:
-        await message.answer("⚠️ خطأ: لم يتم اختيار أي قسم!")
-        await state.finish()
-        return
+    # تحويل الأقسام لصيغة JSON نصية كما في ملفك
+    cats_json = json.dumps([str(c) for c in data.get('selected_cats', [])])
 
-    # التعديل الجوهري هنا: إرسال العمودين لقاعدة البيانات
     payload = {
         "created_by": str(message.from_user.id),
         "quiz_name": quiz_name,
         "chat_id": str(message.chat.id), 
-        "is_public": data.get('is_broadcast', False),
         "time_limit": int(data.get('quiz_time', 15)),
         "questions_count": int(data.get('quiz_count', 10)),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
-        "hint_enabled": bool(data.get('quiz_hint_bool', False)), # حفظ التلميح العام
-        "smart_hint": bool(data.get('quiz_smart_bool', False)),   # حفظ التلميح الذكي ✨
+        "hint_enabled": bool(data.get('quiz_hint_bool', False)),
+        "smart_hint": bool(data.get('quiz_smart_bool', False)), # الحفظ الصحيح للتلميح الذكي
         "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
-        "cats": json.dumps([str(c) for c in selected_cats]) # حفظ الأقسام كـ JSON نصي
+        "cats": cats_json,
+        "is_public": True 
     }
 
     try:
+        # تنفيذ الحفظ في سوبابيس
         supabase.table("saved_quizzes").insert(payload).execute()
+        await state.finish() 
+
+        # استخراج اسم المستخدم الحقيقي من تليجرام
+        user_name = message.from_user.first_name
         
-        # تحديد نوع التلميح للرسالة
+        # تحديد حالة التلميح بناءً على الـ Payload
         h_status = "✨ ذكي" if payload['smart_hint'] else ("💡 عادي" if payload['hint_enabled'] else "❌ معطل")
         
-        success_msg = (
-            f"✅ **تم حفظ المسابقة بنجاح!**\n\n"
-            f"🏷 الاسم: `{quiz_name}`\n"
+        await message.answer(
+            f"✅ **تم الحفظ بنجاح يا {user_name}!**\n\n"
+            f"📝 المسابقة: **{quiz_name}**\n"
             f"💡 التلميح: **{h_status}**\n"
-            f"⏱ الوقت: `{payload['time_limit']} ثانية`\n"
-            f"🚀 اكتب **مسابقة** لرؤية مسابقاتك."
+            f"⏱ الوقت: `{payload['time_limit']} ثانية`\n\n"
+            f"🚀 أرسل كلمة **مسابقة** لبدء اللعب!", 
+            parse_mode="Markdown"
         )
-        await message.answer(success_msg, parse_mode="Markdown")
-        await state.finish()
-
     except Exception as e:
         import logging
-        logging.error(f"Error saving quiz: {e}")
-        await message.answer(f"❌ خطأ أثناء الحفظ: `{str(e)[:50]}`")
-        
+        logging.error(f"Save Error: {e}")
+        await message.answer(f"❌ حدث خطأ أثناء الحفظ.\nالسبب: `{str(e)[:50]}`")
 # --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
 @dp.message_handler(lambda message: message.text == "مسابقة")
 @dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
