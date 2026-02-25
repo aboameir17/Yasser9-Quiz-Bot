@@ -880,23 +880,34 @@ async def setup_quiz_main(c: types.CallbackQuery, state: FSMContext):
         reply_markup=get_setup_quiz_kb(owner_id), 
         parse_mode="Markdown"
     )
-
 # ==========================================
-# 1. اختيار مصدر الأسئلة (رسمي / خاص / أعضاء)
+# 1. اختيار مصدر الأسئلة (رسمي / خاص / أعضاء) - نسخة المجلدات والأسماء
 # ==========================================
 
+# --- [ أسئلة البوت: نظام المجلدات الجديد ] --
 @dp.callback_query_handler(lambda c: c.data.startswith('bot_setup_step1_'), state="*")
 async def start_bot_selection(c: types.CallbackQuery, state: FSMContext):
     owner_id = int(c.data.split('_')[-1])
     if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة محمية!", show_alert=True)
     
-    res = supabase.table("bot_categories").select("id, name").execute()
-    if not res.data: return await c.answer("⚠️ لا توجد أقسام رسمية!", show_alert=True)
+    # جلب المجلدات بدلاً من الأقسام مباشرة
+    res = supabase.table("folders").select("id, name").execute()
+    if not res.data: return await c.answer("⚠️ لا توجد مجلدات رسمية!", show_alert=True)
 
-    eligible_cats = [{"id": str(item['id']), "name": item['name']} for item in res.data]
-    await state.update_data(eligible_cats=eligible_cats, selected_cats=[], is_bot_quiz=True, current_owner_id=owner_id) 
-    await render_categories_list(c.message, eligible_cats, [], owner_id)
+    eligible_folders = [{"id": str(item['id']), "name": item['name']} for item in res.data]
+    
+    # تخزين البيانات في الحالة للبدء باختيار المجلدات
+    await state.update_data(
+        eligible_folders=eligible_folders, 
+        selected_folders=[], 
+        is_bot_quiz=True, 
+        current_owner_id=owner_id
+    ) 
+    
+    # استدعاء دالة عرض المجلدات
+    await render_folders_list(c.message, eligible_folders, [], owner_id)
 
+# --- [ أسئلة خاصة: جلب أقسام المستخدم نفسه ] ---
 @dp.callback_query_handler(lambda c: c.data.startswith('my_setup_step1_'), state="*")
 async def start_private_selection(c: types.CallbackQuery, state: FSMContext):
     owner_id = int(c.data.split('_')[-1])
@@ -908,11 +919,13 @@ async def start_private_selection(c: types.CallbackQuery, state: FSMContext):
     await state.update_data(eligible_cats=res.data, selected_cats=[], is_bot_quiz=False, current_owner_id=owner_id) 
     await render_categories_list(c.message, res.data, [], owner_id)
 
+# --- [ أسئلة الأعضاء: إظهار الأسماء بدلاً من الأرقام ] ---
 @dp.callback_query_handler(lambda c: c.data.startswith('members_setup_step1_'), state="*")
 async def start_member_selection(c: types.CallbackQuery, state: FSMContext):
     owner_id = int(c.data.split('_')[-1])
     if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة محمية!", show_alert=True)
     
+    # جلب المعرفات التي لها أسئلة
     res = supabase.table("questions").select("created_by").execute()
     if not res.data: return await c.answer("⚠️ لا يوجد أعضاء حالياً.", show_alert=True)
     
@@ -922,8 +935,14 @@ async def start_member_selection(c: types.CallbackQuery, state: FSMContext):
     
     if not eligible_ids: return await c.answer("⚠️ لا يوجد مبدعون وصلوا لـ 15 سؤال.", show_alert=True)
     
-    await state.update_data(eligible_list=eligible_ids, selected_members=[], is_bot_quiz=False, current_owner_id=owner_id)
-    await render_members_list(c.message, eligible_ids, [], owner_id)
+    # الإصلاح: جلب الأسماء من جدول المستخدمين (users) لربط الـ ID بالاسم
+    users_res = supabase.table("users").select("user_id, name").in_("user_id", eligible_ids).execute()
+    
+    # تحويل البيانات لقائمة كائنات تحتوي على الاسم والمعرف
+    eligible_list = [{"id": str(u['user_id']), "name": u['name'] or f"مبدع {u['user_id']}"} for u in users_res.data]
+    
+    await state.update_data(eligible_list=eligible_list, selected_members=[], is_bot_quiz=False, current_owner_id=owner_id)
+    await render_members_list(c.message, eligible_list, [], owner_id)
 
 # ==========================================
 # 2. معالجات التبديل والاختيار (Toggle & Go)
