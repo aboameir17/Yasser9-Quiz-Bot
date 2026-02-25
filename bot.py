@@ -1536,24 +1536,28 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
             # 6. عرض لوحة المبدعين اللحظية
             await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
         
-        # --- [ ⏱️ محرك العداد التنازلي للسؤال التالي - تم تصحيح المتغير i ] ---
+        # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
-            countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
-            
-            for count in range(4, 0, -1):
-                await asyncio.sleep(1)
-                icon = icons[count] if count < len(icons) else "⚪"
-                try:
-                    await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
-                except: pass
-            
-            await asyncio.sleep(1)
-            try: await countdown_msg.delete()
-            except: pass
+            try:
+                countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
+                
+                # سنقوم بالتحديث كل ثانية ونصف أو ثانيتين لتقليل الضغط
+                for count in range(4, 0, -2): # تقليل عدد التحديثات (تحديث كل ثانيتين)
+                    await asyncio.sleep(2)
+                    icon = icons[count] if count < len(icons) else "⚪"
+                    try:
+                        await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
+                    except Exception as e:
+                        logging.warning(f"Flood avoidance: {e}")
+                        break # توقف عن التحديث إذا ضغط التليجرام
+                
+                await asyncio.sleep(1.5)
+                await countdown_msg.delete()
+            except Exception as e:
+                logging.error(f"Countdown Error: {e}")
         else:
             await asyncio.sleep(2)
-
     # 7. إعلان لوحة الشرف النهائية
     await send_final_results(chat_id, overall_scores, len(questions))
 
