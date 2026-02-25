@@ -1369,86 +1369,92 @@ async def engine_bot_questions(chat_id, quiz_data, owner_name):
     except Exception as e:
         logging.error(f"⚠️ Bot Engine Critical Error: {e}")
         await bot.send_message(chat_id, "❌ حدث خطأ فني أثناء استخراج أسئلة البوت.")
-# --- [ محرك التلميحات الذكي - الإصدار الملكي المزخرف ✨ ] ---
-# --- [ محرك التلميحات الذكي - الإصدار الملكي المزخرف ✨ ] ---
+# --- [ محرك التلميحات الملكي المطور: 3 قلوب + ذاكرة سحابية ✨ ] ---
+
+current_key_index = 0 # متغير تدوير المفاتيح
+
 async def generate_smart_hint(answer_text):
     """
-    توليد وصف لغزي ذكي بتنسيق فاخر ومزخرف يجذب الأنظار.
+    توليد وصف لغزي ذكي مع تدوير 3 مفاتيح وحفظ النتيجة في Supabase.
     """
+    global current_key_index
     answer_text = str(answer_text).strip()
     
-    # 1. حالة عدم وجود مفتاح (قالب الطوارئ)
-    if not GROQ_API_KEY:
-        return (
-            f"⚠️ <b>〔 تـنـبـيـه الـنـظـام 〕</b>\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"💡 <b>تلميح تقليدي:</b> تبدأ بـ ( {answer_text[0]} )\n"
-            f"━━━━━━━━━━━━━━"
-        )
-
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": "llama-3.3-70b-versatile",
-        "messages": [
-            {
-                "role": "system", 
-                "content": "أنت خبير ألغاز محترف. أعطِ وصفاً غامضاً وذكياً جداً يصف المعنى دون ذكر الاسم."
-            },
-            {
-                "role": "user", 
-                "content": f"الإجابة هي: ({answer_text}). أعطني وصفاً غامضاً عربي قصير جداً ومسلي."
-            }
-        ],
-        "temperature": 0.6
-    }
-
+    # 1. البحث في الذاكرة السحابية (Supabase) لتوفير المفاتيح
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers, json=payload, timeout=10.0)
-            
-            if response.status_code == 200:
-                res_data = response.json()
-                hint = res_data['choices'][0]['message']['content'].strip()
-                
-                # ✨ القالب الفاخر للمحترفين
-                return (
-                    f"💎 <b>〔 تـلـمـيـح ذكـي نـادر 〕</b> 💎\n"
-                    f"╔════════════════╗\n\n"
-                    f"   <b>📜 الوصف:</b>\n"
-                    f"   <i>« {hint} »</i>\n\n"
-                    f"╚════════════════╝\n"
-                    f"<b>⏳ يتبقى القليل.. أثبت وجودك!</b>"
-                )
-            
-            # 2. حالة فشل الـ API (قالب مساعد فاخر)
-            return (
-                f"💡 <b>〔 مـسـاعـدة إضـافـيـة 〕</b>\n"
-                f"📂 ━━━━━━━━━━━━━━ 📂\n"
-                f"<b>• الحرف الأول:</b> ( {answer_text[0]} )\n"
-                f"<b>• طول الكلمة:</b> {len(answer_text)} حروف\n"
-                f"━━━━━━━━━━━━━━"
-            )
-                
+        cached_res = supabase.table("hints").select("hint").eq("word", answer_text).execute()
+        if cached_res.data:
+            return cached_res.data[0]['hint'] # إذا وجده، يرسله فوراً بالتنسيق المخزن
     except Exception as e:
-        logging.error(f"AI Connection Error: {str(e)}")
-        return (
-            f"⚡️ <b>〔 تلميح سريع 〕</b>\n"
-            f"━━━━━━━━━━━━━━\n"
-            f"🔑 تبدأ بـ الحرف: ( {answer_text[0]} )\n"
-            f"━━━━━━━━━━━━━━"
-        )
+        logging.error(f"Supabase Cache Check Error: {e}")
 
-# دالة حذف الرسائل المساعدة (تم إصلاح الخطأ هنا ✅)
+    # 2. إذا لم يوجد في الذاكرة، نبدأ رحلة البحث في "القلوب الثلاثة"
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    
+    for _ in range(len(GROQ_KEYS)):
+        active_key = GROQ_KEYS[current_key_index].strip()
+        headers = {
+            "Authorization": f"Bearer {active_key}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {"role": "system", "content": "أنت خبير ألغاز محترف. أعطِ وصفاً غامضاً وذكياً جداً يصف المعنى دون ذكر الكلمة بالعربية."},
+                {"role": "user", "content": f"الإجابة هي: ({answer_text}). أعطني وصفاً غامضاً عربي قصير جداً ومسلي."}
+            ],
+            "temperature": 0.6
+        }
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, headers=headers, json=payload, timeout=12.0)
+                
+                if response.status_code == 200:
+                    res_data = response.json()
+                    ai_hint = res_data['choices'][0]['message']['content'].strip()
+                    
+                    # ✨ صياغة القالب الملكي الفاخر
+                    final_styled_hint = (
+                        f"💎 <b>〔 تـلـمـيـح ذكـي نـادر 〕</b> 💎\n"
+                        f"╔════════════════╗\n\n"
+                        f"   <b>📜 الوصف:</b>\n"
+                        f"   <i>« {ai_hint} »</i>\n\n"
+                        f"╚════════════════╝\n"
+                        f"<b>⏳ يتبقى القليل.. أثبت وجودك!</b>"
+                    )
+                    
+                    # حفظ النتيجة في سوبابيس للمستقبل
+                    try:
+                        supabase.table("hints").insert({"word": answer_text, "hint": final_styled_hint}).execute()
+                    except: pass
+                    
+                    return final_styled_hint
+                
+                # إذا تجاوز الحد (Rate Limit)، ننتقل للقلب التالي
+                elif response.status_code == 429:
+                    current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
+                    continue
+        except:
+            current_key_index = (current_key_index + 1) % len(GROQ_KEYS)
+            continue
+
+    # 3. حالة الطوارئ (إذا فشلت كل المفاتيح ولم نجد الكلمة في الذاكرة)
+    return (
+        f"💡 <b>〔 مـسـاعـدة إضـافـيـة 〕</b>\n"
+        f"📂 ━━━━━━━━━━━━━━ 📂\n"
+        f"<b>• الحرف الأول:</b> ( {answer_text[0]} )\n"
+        f"<b>• طول الكلمة:</b> {len(answer_text)} حروف\n"
+        f"━━━━━━━━━━━━━━"
+    )
+
+# دالة حذف الرسائل المساعدة (تم إصلاحها لتعمل بسلاسة ✅)
 async def delete_after(message, delay):
-    await asyncio.sleep(delay) # تأكد أن الكلمة مكتوبة كاملة في سطر واحد
+    await asyncio.sleep(delay)
     try: 
         await message.delete()
-    except: 
+    except Exception: 
         pass
 # ==========================================
 # [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
