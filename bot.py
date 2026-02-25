@@ -174,51 +174,77 @@ def get_setup_quiz_kb(user_id):
         InlineKeyboardButton("👥 أقسام الأعضاء (إبداعات الآخرين)", callback_data=f"members_setup_step1_{user_id}"),
         InlineKeyboardButton("👤 أقسامك الخاصة (مكتبتي)", callback_data=f"my_setup_step1_{user_id}"),
         InlineKeyboardButton("🤖 أقسام البوت (الرسمية)", callback_data=f"bot_setup_step1_{user_id}"),
-        # تم الإصلاح ليعود للوحة التحكم الرئيسية الخاصة بك
         InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
     )
     return kb
-
-def generate_members_keyboard(members, selected_list, user_id):
-    """كيبورد اختيار الأعضاء مع حماية المبعسسين"""
+# ==========================================
+# الدوال المساعدة المحدثة (حماية + أسماء حقيقية)
+# ==========================================
+async def render_members_list(message, eligible_list, selected_list, owner_id):
+    """
+    eligible_list: قائمة تحتوي على ديكشنري [{id: ..., name: ...}]
+    """
     kb = InlineKeyboardMarkup(row_width=2)
-    for m in members:
-        m_id = str(m['user_id'])
-        mark = "✅ " if m_id in selected_list else ""
-        # نمرر آيدي المستخدم في نهاية الكولباك لضمان الحماية في الخطوة القادمة
-        kb.insert(InlineKeyboardButton(f"{mark}{m['name']}", callback_data=f"toggle_mem_{m_id}_{user_id}"))
-    
-    kb.add(InlineKeyboardButton("➡️ التالي (اختيار الأقسام)", callback_data=f"go_to_cats_selection_{user_id}"))
-    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{user_id}"))
-    return kb
-# دالة عرض المبدعين المحدثة
-async def render_members_list(message, eligible_ids, selected_list, owner_id):
-    kb = InlineKeyboardMarkup(row_width=2)
-    for m_id in eligible_ids:
-        status = "✅ " if str(m_id) in selected_list else ""
-        # تشفير الزر بآيدي العضو وآيدي صاحب الجلسة
-        kb.insert(InlineKeyboardButton(f"{status} المبدع: {str(m_id)[-6:]}", callback_data=f"toggle_mem_{m_id}_{owner_id}"))
+    for member in eligible_list:
+        m_id = str(member['id'])
+        # نستخدم الاسم الحقيقي اللي جلبناه من جدول users
+        status = "✅ " if m_id in selected_list else ""
+        # الحماية: نمرر owner_id في نهاية الكولباك
+        kb.insert(InlineKeyboardButton(
+            f"{status}{member['name']}", 
+            callback_data=f"toggle_mem_{m_id}_{owner_id}"
+        ))
     
     if selected_list:
-        kb.add(InlineKeyboardButton(f"➡️ تم اختيار ({len(selected_list)}) .. عرض أقسامهم", callback_data=f"go_to_cats_step_{owner_id}"))
+        # زر محمي تماماً لا ينتقل إلا بآيدي صاحب الجلسة
+        kb.add(InlineKeyboardButton(
+            f"➡️ تم اختيار ({len(selected_list)}) .. عرض أقسامهم", 
+            callback_data=f"go_to_cats_step_{owner_id}"
+        ))
     
     kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{owner_id}"))
-    await message.edit_text("👥 **أقسام الأعضاء:**", reply_markup=kb)
+    await message.edit_text("👥 <b>أقسام الأعضاء المبدعين:</b>\nاختر المبدعين لعرض أقسامهم:", reply_markup=kb, parse_mode="HTML")
 
-# دالة عرض الأقسام المحدثة
+# 2. دالة عرض المجلدات (نظام البوت الرسمي الجديد)
+async def render_folders_list(message, eligible_folders, selected_folders, owner_id):
+    kb = InlineKeyboardMarkup(row_width=2)
+    for folder in eligible_folders:
+        f_id = str(folder['id'])
+        status = "✅ " if f_id in selected_folders else ""
+        kb.insert(InlineKeyboardButton(
+            f"{status}{folder['name']}", 
+            callback_data=f"toggle_folder_{f_id}_{owner_id}"
+        ))
+    
+    if selected_folders:
+        kb.add(InlineKeyboardButton(
+            f"➡️ تم اختيار ({len(selected_folders)}) .. عرض الأقسام", 
+            callback_data=f"confirm_folders_{owner_id}"
+        ))
+    
+    kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{owner_id}"))
+    await message.edit_text("🗂️ <b>مجلدات البوت الرسمية:</b>\nاختر المجلدات المطلوبة:", reply_markup=kb, parse_mode="HTML")
+
+# 3. دالة عرض الأقسام (محمية من المبعسسين)
 async def render_categories_list(message, eligible_cats, selected_cats, owner_id):
     kb = InlineKeyboardMarkup(row_width=2)
     for cat in eligible_cats:
         cat_id_str = str(cat['id'])
         status = "✅ " if cat_id_str in selected_cats else ""
-        kb.insert(InlineKeyboardButton(f"{status}{cat['name']}", callback_data=f"toggle_cat_{cat_id_str}_{owner_id}"))
+        kb.insert(InlineKeyboardButton(
+            f"{status}{cat['name']}", 
+            callback_data=f"toggle_cat_{cat_id_str}_{owner_id}"
+        ))
     
     if selected_cats:
-        kb.add(InlineKeyboardButton(f"➡️ تم اختيار ({len(selected_cats)}) .. الإعدادات", callback_data=f"final_quiz_settings_{owner_id}"))
+        # زر محمي: يمنع المبعسس من الانتقال لواجهة الإعدادات النهائية
+        kb.add(InlineKeyboardButton(
+            f"➡️ تم اختيار ({len(selected_cats)}) .. الإعدادات", 
+            callback_data=f"final_quiz_settings_{owner_id}"
+        ))
     
     kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{owner_id}"))
-    await message.edit_text("📂 **اختر الأقسام:**", reply_markup=kb)
-# ==========================================
+    await message.edit_text("📂 <b>اختر الأقسام المطلوبة:</b>", reply_markup=kb, parse_mode="HTML")
 # ==========================================
 async def render_final_settings_panel(message, data, owner_id):
     """الدالة الموحدة لعرض لوحة الإعدادات النهائية مشفرة بآيدي المالك"""
@@ -232,7 +258,7 @@ async def render_final_settings_panel(message, data, owner_id):
     q_scope_text = "إذاعة عامة 🌐" if is_broadcast else "مسابقة داخلية 📍"
     
     text = (
-       f"⚙️ **لوحة تشطيب المسابقة النهائية**\n"
+       f"⚙️ لوحة إعدادات المسابقة\n"
        f"━━━━━━━━━━━━━━━━━━━\n"
        f"📊 عدد الأسئلة: {q_count}\n"
        f"📡 النطاق: {q_scope_text}\n"
