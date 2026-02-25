@@ -1536,8 +1536,7 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         if h_msg:
             # حذف رسالة التلميح فوراً (0 ثانية تأخير) عند انتهاء الوقت أو فوز اللاعبين
             asyncio.create_task(delete_after(h_msg, 0))
-
-        # 5. إنهاء السؤال وحساب النقاط للفائزين
+# 5. إنهاء السؤال وحساب النقاط للفائزين
         if chat_id in active_quizzes:
             active_quizzes[chat_id]['active'] = False
             
@@ -1549,7 +1548,31 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         
             # 6. عرض لوحة المبدعين (نتائج السؤال اللحظية)
             await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
+        
+        # --- [ ⏱️ محرك العداد التنازلي للسؤال التالي ] ---
+        if q_index < len(questions) - 1:
+            # إيموجيات الحركة لجذب الانتباه
+            icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
+            countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد <b>5</b> ثواني...")
+            
+            for i in range(4, -1, -1):
+                await asyncio.sleep(1)
+                if i > 0:
+                    icon = icons[i] if i < len(icons) else "⚪"
+                    try:
+                        await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{i}</b> ثواني...")
+                    except: pass
+            
+            # حذف رسالة العداد لتنظيف الشات قبل ظهور السؤال الجديد
+            try: await countdown_msg.delete()
+            except: pass
+        else:
+            # إذا كان هذا آخر سؤال، انتظر قليلاً قبل النتائج النهائية
+            await asyncio.sleep(2)
 
+    # 7. إعلان لوحة الشرف النهائية وتتويج الأبطال
+    await send_final_results(chat_id, overall_scores, len(questions))
+    
 # ==========================================
 # 4. الجزء الثالث: قالب السؤال والتلميح...........     
 # ==========================================
