@@ -1492,35 +1492,36 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
             'cat_name': cat_name
         })
         
-        # 4. محرك الوقت الذكي ومراقبة التلميح الناري
+        # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
         start_time = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
-        h_msg = None  # متغير لتخزين رسالة التلميح لحذفها لاحقاً
+        h_msg = None  # متغير لتخزين رسالة التلميح الملكي لحذفها لاحقاً
         
         while time.time() - start_time < t_limit:
+            # التحقق مما إذا كانت المسابقة لا تزال قائمة أو تم إيقافها
             if not active_quizzes.get(chat_id) or not active_quizzes[chat_id]['active']:
                 break
             
-            # --- نظام إطلاق التلميح عند منتصف الوقت بالضبط باستخدام محرك Groq ---
+            # --- [ نظام إطلاق التلميح الملكي عند منتصف الوقت ] ---
+            # سيقوم المحرك الآن بالبحث في سوبابيس أولاً ثم تدوير القلوب الثلاثة
             if quiz_data.get('smart_hint') and not active_quizzes[chat_id]['hint_sent']:
-                # إذا مرت نصف المدة ولم يتم إرسال تلميح بعد
+                # إذا مرت نصف المدة (مثلاً 10 ثواني من أصل 20)
                 if (time.time() - start_time) >= (t_limit / 2):
                     try:
-                        # استدعاء دالة التلميح الذكي
+                        # استدعاء دالة التلميح الملكي المحدثة (3 قلوب + سوبابيس)
                         hint_text = await generate_smart_hint(ans)
                         
                         h_msg = await bot.send_message(chat_id, hint_text, parse_mode="HTML")
                         active_quizzes[chat_id]['hint_sent'] = True
                         
-                        # تم إزالة الحذف التلقائي السريع (8 ثواني) ليبقى التلميح لنهاية السؤال
                     except Exception as e:
-                        logging.error(f"Fire Hint Execution Error: {e}")
+                        logging.error(f"⚠️ خطأ في تنفيذ التلميح الملكي: {e}")
 
-            await asyncio.sleep(0.5) # نبض المحرك للسماح بمعالجة الإجابات
+            await asyncio.sleep(0.5) # نبض المحرك للسماح بمعالجة الإجابات البرقية
 
-        # --- [ إيقاف السؤال وحذف التلميح فوراً ] ---
+        # --- [ تنظيف الواجهة فور انتهاء السؤال ] ---
         if h_msg:
-            # حذف رسالة التلميح عند انتهاء الوقت أو فوز اللاعبين
+            # حذف رسالة التلميح فوراً (0 ثانية تأخير) عند انتهاء الوقت أو فوز اللاعبين
             asyncio.create_task(delete_after(h_msg, 0))
 
         # 5. إنهاء السؤال وحساب النقاط للفائزين
@@ -1535,12 +1536,6 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         
             # 6. عرض لوحة المبدعين (نتائج السؤال اللحظية)
             await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
-        
-        # فاصل زمني بسيط قبل الانتقال للسؤال التالي
-        await asyncio.sleep(2.5)
-
-    # 7. إعلان لوحة الشرف النهائية وتتويج الأبطال
-    await send_final_results(chat_id, overall_scores, len(questions))
 
 # ==========================================
 # 4. الجزء الثالث: قالب السؤال والتلميح...........     
