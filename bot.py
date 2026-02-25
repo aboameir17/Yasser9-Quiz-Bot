@@ -1504,71 +1504,59 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
         start_time = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
-        h_msg = None  # متغير لتخزين رسالة التلميح الملكي لحذفها لاحقاً
+        h_msg = None 
         
         while time.time() - start_time < t_limit:
-            # التحقق مما إذا كانت المسابقة لا تزال قائمة أو تم إيقافها
             if not active_quizzes.get(chat_id) or not active_quizzes[chat_id]['active']:
                 break
             
-            # --- [ نظام إطلاق التلميح الملكي عند منتصف الوقت ] ---
-            # سيقوم المحرك الآن بالبحث في سوبابيس أولاً ثم تدوير القلوب الثلاثة
             if quiz_data.get('smart_hint') and not active_quizzes[chat_id]['hint_sent']:
-                # إذا مرت نصف المدة (مثلاً 10 ثواني من أصل 20)
                 if (time.time() - start_time) >= (t_limit / 2):
                     try:
-                        # استدعاء دالة التلميح الملكي المحدثة (3 قلوب + سوبابيس)
                         hint_text = await generate_smart_hint(ans)
-                        
                         h_msg = await bot.send_message(chat_id, hint_text, parse_mode="HTML")
                         active_quizzes[chat_id]['hint_sent'] = True
-                        
                     except Exception as e:
-                        logging.error(f"⚠️ خطأ في تنفيذ التلميح الملكي: {e}")
+                        logging.error(f"⚠️ خطأ في التلميح: {e}")
 
-            await asyncio.sleep(0.5) # نبض المحرك للسماح بمعالجة الإجابات البرقية
+            await asyncio.sleep(0.5)
 
-        # --- [ تنظيف الواجهة فور انتهاء السؤال ] ---
         if h_msg:
-            # حذف رسالة التلميح فوراً (0 ثانية تأخير) عند انتهاء الوقت أو فوز اللاعبين
             asyncio.create_task(delete_after(h_msg, 0))
-# 5. إنهاء السؤال وحساب النقاط للفائزين
+
+        # 5. إنهاء السؤال وحساب النقاط
         if chat_id in active_quizzes:
             active_quizzes[chat_id]['active'] = False
-            
             for w in active_quizzes[chat_id]['winners']:
                 uid = w['id']
                 if uid not in overall_scores: 
                     overall_scores[uid] = {"name": w['name'], "points": 0}
                 overall_scores[uid]['points'] += 10
         
-            # 6. عرض لوحة المبدعين (نتائج السؤال اللحظية)
+            # 6. عرض لوحة المبدعين اللحظية
             await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
         
-        # --- [ ⏱️ محرك العداد التنازلي للسؤال التالي ] ---
-        if q_index < len(questions) - 1:
-            # إيموجيات الحركة لجذب الانتباه
+        # --- [ ⏱️ محرك العداد التنازلي للسؤال التالي - تم تصحيح المتغير i ] ---
+        if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
-            countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد <b>5</b> ثواني...")
+            countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
             
-            for i in range(4, -1, -1):
+            for count in range(4, 0, -1):
                 await asyncio.sleep(1)
-                if i > 0:
-                    icon = icons[i] if i < len(icons) else "⚪"
-                    try:
-                        await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{i}</b> ثواني...")
-                    except: pass
+                icon = icons[count] if count < len(icons) else "⚪"
+                try:
+                    await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
+                except: pass
             
-            # حذف رسالة العداد لتنظيف الشات قبل ظهور السؤال الجديد
+            await asyncio.sleep(1)
             try: await countdown_msg.delete()
             except: pass
         else:
-            # إذا كان هذا آخر سؤال، انتظر قليلاً قبل النتائج النهائية
             await asyncio.sleep(2)
 
-    # 7. إعلان لوحة الشرف النهائية وتتويج الأبطال
+    # 7. إعلان لوحة الشرف النهائية
     await send_final_results(chat_id, overall_scores, len(questions))
-    
+
 # ==========================================
 # 4. الجزء الثالث: قالب السؤال والتلميح...........     
 # ==========================================
