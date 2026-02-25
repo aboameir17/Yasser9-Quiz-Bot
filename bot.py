@@ -1313,75 +1313,70 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
         await c.answer("🚨 حدث خطأ")
         
 # ==========================================
-# 3. نظام المحركات الثلاثة المنفصلة (ياسر المطور)
+# 3. نظام المحركات المنفصلة (ياسر المطور - نسخة عشوائية)
 # ==========================================
 
 # --- [1. محرك أسئلة البوت] ---
 async def engine_bot_questions(chat_id, quiz_data, owner_name):
     try:
-        cat_ids = [int(c) for c in quiz_data['cats'] if str(c).isdigit()]
-        res = supabase.table("bot_questions").select("*").in_("bot_category_id", cat_ids).limit(int(quiz_data['questions_count'])).execute()
-        if not res.data:
-            return await bot.send_message(chat_id, "⚠️ لم أجد أسئلة في جدول البوت العام.")
-        await run_universal_logic(chat_id, res.data, quiz_data, owner_name, "bot")
-    except Exception as e:
-        logging.error(f"Bot Engine Error: {e}")
-
-
-        # --- [2. محرك أسئلة الأعضاء] ---
-async def engine_user_questions(chat_id, quiz_data, owner_name):
-    try:
-        cat_ids = [int(c) for c in quiz_data['cats'] if str(c).isdigit()]
-        res = supabase.table("questions").select("*, categories(name)").in_("category_id", cat_ids).limit(int(quiz_data['questions_count'])).execute()
-        if not res.data:
-            return await bot.send_message(chat_id, "⚠️ لم أجد أسئلة في أقسام الأعضاء العامة.")
-        await run_universal_logic(chat_id, res.data, quiz_data, owner_name, "user")
-    except Exception as e:
-        logging.error(f"User Engine Error: {e}")
-
-
-# --- [1. محرك أسئلة البوت المصلح] ---
-async def engine_bot_questions(chat_id, quiz_data, owner_name):
-    try:
-        # 1. فك تشفير الأقسام (Handling JSON Strings)
         raw_cats = quiz_data.get('cats', [])
-        
         if isinstance(raw_cats, str):
             try:
-                # تحويل النص '["13", "14"]' إلى قائمة حقيقية
                 cat_ids_list = json.loads(raw_cats)
-            except Exception:
-                # إذا كان النص بصيغة خاطئة، نحاول تنظيفه يدوياً
+            except:
                 cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
         else:
             cat_ids_list = raw_cats
 
-        # 2. تحويل العناصر إلى أرقام (لأن جدول bot_questions يستخدم أرقام في bot_category_id)
-        # بناءً على ملفك، المعرفات هي: 13 (إسلاميات)، 14 (تاريخ)، إلخ.
         cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
-
         if not cat_ids:
-            logging.error(f"No valid category IDs found for Quiz: {quiz_data.get('quiz_name')}")
-            return await bot.send_message(chat_id, "⚠️ خطأ: لم يتم العثور على أقسام صالحة في هذه المسابقة.")
+            return await bot.send_message(chat_id, "⚠️ خطأ: لم يتم العثور على أقسام صالحة.")
 
-        # 3. استعلام سوبابيس (Querying based on bot_category_id)
-        # نستخدم .in_ لجلب الأسئلة التي تنتمي لأي من الأقسام المختارة
-        res = supabase.table("bot_questions") \
-            .select("*") \
-            .in_("bot_category_id", cat_ids) \
-            .limit(int(quiz_data.get('questions_count', 10))) \
-            .execute()
-
+        # جلب الأسئلة وخلطها عشوائياً
+        res = supabase.table("bot_questions").select("*").in_("bot_category_id", cat_ids).execute()
         if not res.data:
-            return await bot.send_message(chat_id, f"⚠️ لم أجد أسئلة حالياً في الأقسام: {cat_ids}")
+            return await bot.send_message(chat_id, "⚠️ لم أجد أسئلة في جدول البوت.")
 
-        # 4. تمرير الأسئلة للمنطق العام للعبة
-        # المنطق العام سيتولى توزيع الأسئلة وحساب النقاط والتلميحات
-        await run_universal_logic(chat_id, res.data, quiz_data, owner_name, "bot")
+        questions_pool = res.data
+        random.shuffle(questions_pool)
+        count = int(quiz_data.get('questions_count', 10))
+        selected_questions = questions_pool[:count]
 
+        await run_universal_logic(chat_id, selected_questions, quiz_data, owner_name, "bot")
     except Exception as e:
-        logging.error(f"⚠️ Bot Engine Critical Error: {e}")
-        await bot.send_message(chat_id, "❌ حدث خطأ فني أثناء استخراج أسئلة البوت.")
+        logging.error(f"Bot Engine Error: {e}")
+
+# --- [2. محرك أسئلة الأعضاء] ---
+async def engine_user_questions(chat_id, quiz_data, owner_name):
+    try:
+        raw_cats = quiz_data.get('cats', [])
+        if isinstance(raw_cats, str):
+            try:
+                cat_ids_list = json.loads(raw_cats)
+            except:
+                cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+        else:
+            cat_ids_list = raw_cats
+
+        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
+        if not cat_ids:
+            return await bot.send_message(chat_id, "⚠️ خطأ في أقسام الأعضاء.")
+
+        # جلب الأسئلة وخلطها عشوائياً
+        res = supabase.table("questions").select("*, categories(name)").in_("category_id", cat_ids).execute()
+        if not res.data:
+            return await bot.send_message(chat_id, "⚠️ لم أجد أسئلة في أقسام الأعضاء.")
+
+        questions_pool = res.data
+        random.shuffle(questions_pool)
+        count = int(quiz_data.get('questions_count', 10))
+        selected_questions = questions_pool[:count]
+
+        await run_universal_logic(chat_id, selected_questions, quiz_data, owner_name, "user")
+    except Exception as e:
+        logging.error(f"User Engine Error: {e}")
+
+
 # --- [ محرك التلميحات الملكي المطور: 3 قلوب + ذاكرة سحابية ✨ ] ---
 
 current_key_index = 0 # متغير تدوير المفاتيح
