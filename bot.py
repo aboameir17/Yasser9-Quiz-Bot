@@ -17,21 +17,34 @@ logging.basicConfig(level=logging.INFO)
 ADMIN_ID = 7988144062
 OWNER_USERNAME = "@Ya_79k"
 
-# سحب التوكينات من Render (تأكد من وجود GROQ_API_KEY في الإعدادات)
+# سحب التوكينات من Render (لن يعمل البوت بدونها في الإعدادات)
 API_TOKEN = os.getenv('BOT_TOKEN')
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
-# تعريف المحركات الأساسية
+# --- [ استدعاء القلوب الثلاثة - تشفير خارجي ] ---
+# هنا الكود يطلب المفاتيح من المتغيرات فقط، ولا توجد أي قيمة مسجلة هنا
+GROQ_KEYS = [
+    os.getenv('G_KEY_1'),
+    os.getenv('G_KEY_2'),
+    os.getenv('G_KEY_3')
+]
+
+# تصفية المصفوفة لضمان عدم وجود قيم فارغة
+GROQ_KEYS = [k for k in GROQ_KEYS if k]
+current_key_index = 0  # مؤشر تدوير القلوب
+
+# التحقق من وجود المتغيرات الأساسية لضمان عدم حدوث Crash
+if not API_TOKEN or not GROQ_KEYS:
+    logging.error("❌ خطأ: المتغيرات المشفرة مفقودة في إعدادات Render!")
+
+# تعريف المحركات
 bot = Bot(token=API_TOKEN, parse_mode="HTML")
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# قاموس المسابقات النشطة
 active_quizzes = {}
-
 # ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
