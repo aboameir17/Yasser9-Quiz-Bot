@@ -971,9 +971,55 @@ async def start_member_selection(c: types.CallbackQuery, state: FSMContext):
     await render_members_list(c.message, eligible_list, [], owner_id)
 
 # ==========================================
-# 2. معالجات التبديل والاختيار (Toggle & Go)
+# 2. معالجات التبديل والاختيار (Toggle & Go) - نسخة المجلدات المحدثة
 # ==========================================
 
+# --- [ 1. معالج تبديل المجلدات (Folders Toggle) ] ---
+@dp.callback_query_handler(lambda c: c.data.startswith('toggle_folder_'), state="*")
+async def toggle_folder_selection(c: types.CallbackQuery, state: FSMContext):
+    data_parts = c.data.split('_')
+    f_id = data_parts[2]
+    owner_id = int(data_parts[3])
+    
+    if c.from_user.id != owner_id: 
+        return await c.answer("⚠️ مبعسس؟ المجلدات لصاحب المسابقة بس! 😂", show_alert=True)
+    
+    data = await state.get_data()
+    selected = data.get('selected_folders', [])
+    eligible = data.get('eligible_folders', [])
+    
+    if f_id in selected: selected.remove(f_id)
+    else: selected.append(f_id)
+    
+    await state.update_data(selected_folders=selected)
+    await c.answer()
+    # استدعاء دالة رندر المجلدات لتحديث الشكل
+    await render_folders_list(c.message, eligible, selected, owner_id)
+
+# --- [ 2. معالج الانتقال من المجلدات إلى الأقسام ] ---
+@dp.callback_query_handler(lambda c: c.data.startswith('confirm_folders_'), state="*")
+async def confirm_folders_to_cats(c: types.CallbackQuery, state: FSMContext):
+    owner_id = int(c.data.split('_')[-1])
+    if c.from_user.id != owner_id: return await c.answer("⚠️ اللوحة محمية!", show_alert=True)
+    
+    data = await state.get_data()
+    chosen_folder_ids = data.get('selected_folders', [])
+    
+    if not chosen_folder_ids:
+        return await c.answer("⚠️ اختر مجلد واحد على الأقل!", show_alert=True)
+
+    # جلب الأقسام التابعة للمجلدات المختارة فقط من جدول bot_categories
+    res = supabase.table("bot_categories").select("id, name").in_("folder_id", chosen_folder_ids).execute()
+    
+    if not res.data:
+        return await c.answer("⚠️ هذه المجلدات لا تحتوي على أقسام حالياً!", show_alert=True)
+    
+    await state.update_data(eligible_cats=res.data, selected_cats=[])
+    await c.answer("✅ تم جلب أقسام المجلدات")
+    # الانتقال لعرض الأقسام
+    await render_categories_list(c.message, res.data, [], owner_id)
+
+# --- [ 3. معالج تبديل الأعضاء (Members Toggle) ] ---
 @dp.callback_query_handler(lambda c: c.data.startswith('toggle_mem_'), state="*")
 async def toggle_member(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
@@ -984,7 +1030,7 @@ async def toggle_member(c: types.CallbackQuery, state: FSMContext):
     
     data = await state.get_data()
     selected = data.get('selected_members', [])
-    eligible = data.get('eligible_list', [])
+    eligible = data.get('eligible_list', []) # تحتوي على الأوبجكت {id, name}
     
     if m_id in selected: selected.remove(m_id)
     else: selected.append(m_id)
@@ -993,6 +1039,7 @@ async def toggle_member(c: types.CallbackQuery, state: FSMContext):
     await c.answer()
     await render_members_list(c.message, eligible, selected, owner_id)
 
+# --- [ 4. معالج الانتقال من الأعضاء إلى الأقسام ] ---
 @dp.callback_query_handler(lambda c: c.data.startswith('go_to_cats_step_'), state="*")
 async def show_selected_members_cats(c: types.CallbackQuery, state: FSMContext):
     owner_id = int(c.data.split('_')[-1])
@@ -1000,11 +1047,14 @@ async def show_selected_members_cats(c: types.CallbackQuery, state: FSMContext):
     
     data = await state.get_data()
     chosen_ids = data.get('selected_members', [])
+    
+    # جلب الأقسام الخاصة بالأعضاء المختارين
     res = supabase.table("categories").select("id, name").in_("created_by", chosen_ids).execute()
     
     await state.update_data(eligible_cats=res.data, selected_cats=[])
     await render_categories_list(c.message, res.data, [], owner_id)
 
+# --- [ 5. معالج تبديل الأقسام (Categories Toggle) ] ---
 @dp.callback_query_handler(lambda c: c.data.startswith('toggle_cat_'), state="*")
 async def toggle_category_selection(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
@@ -1023,7 +1073,6 @@ async def toggle_category_selection(c: types.CallbackQuery, state: FSMContext):
     await state.update_data(selected_cats=selected)
     await c.answer()
     await render_categories_list(c.message, eligible, selected, owner_id)
-
 # --- 4. لوحة الإعدادات (استدعاء دالة المساعدة) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('final_quiz_settings'), state="*")
 async def final_quiz_settings_panel(c: types.CallbackQuery, state: FSMContext):
@@ -1037,10 +1086,8 @@ async def final_quiz_settings_panel(c: types.CallbackQuery, state: FSMContext):
     await c.answer()
     # استدعاء دالة العرض من قسم المساعدة
     await render_final_settings_panel(c.message, data, owner_id)
-
-
+    
 # --- [ 5 + 6 ] المحرك الموحد ومعالج الحفظ النهائي --- #
-
 @dp.callback_query_handler(lambda c: c.data.startswith(('tog_', 'cyc_', 'set_', 'start_quiz_')), state="*")
 async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     data_parts = c.data.split('_')
@@ -1099,7 +1146,7 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
         await Form.waiting_for_quiz_name.set() 
         
         return await c.message.edit_text(
-            "📝 **يا بطل، أرسل الآن اسماً لمسابقتك:**\n\n*(سيتم حفظ التلميحات والإعدادات تحت هذا الاسم)*",
+            "📝 يا بطل، أرسل الآن اسماً لمسابقتك:\n\n*(سيتم حفظ التلميحات والإعدادات تحت هذا الاسم)*",
             reply_markup=InlineKeyboardMarkup().add(
                 InlineKeyboardButton("❌ إلغاء", callback_data=f"final_quiz_settings_{owner_id}")
             )
