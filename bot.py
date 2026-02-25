@@ -4,6 +4,8 @@ import random
 import time
 import os
 import json
+import re
+import difflib
 import random
 import httpx  # الطريقة الأسرع والأكثر أماناً للتعامل مع API الذكاء الاصطناعي
 from aiogram import Bot, Dispatcher, types, executor
@@ -1594,24 +1596,72 @@ async def delete_after(msg, delay):
     try: await msg.delete()
     except: pass
 
-# ----رصد الإجابات (Answers)----
+# ==========================================
+# 4. نظام رصد الإجابات الذكي (ياسر المطور)
+# ==========================================
+def is_answer_correct(user_msg, correct_ans):
+    if not user_msg or not correct_ans: return False
 
+    def clean_logic(text):
+        # 1. تنظيف أساسي (حذف المسافات وتحويل لصغير)
+        text = text.strip().lower()
+        # 2. توحيد الألفات (أإآ -> ا)
+        text = re.sub(r'[أإآ]', 'ا', text)
+        # 3. توحيد التاء المربوطة (ة -> ه)
+        text = re.sub(r'ة', 'ه', text)
+        # 4. توحيد الياء (ى -> ي)
+        text = re.sub(r'ى', 'ي', text)
+        # 5. معالجة الواو الزائدة (مثل عمرو -> عمر)
+        if text.endswith('و') and len(text) > 3:
+            text = text[:-1]
+        # 6. حذف المسافات الزائدة بين الكلمات
+        text = ' '.join(text.split())
+        return text
+
+    user_clean = clean_logic(user_msg)
+    correct_clean = clean_logic(correct_ans)
+
+    # 1. فحص التطابق التام
+    if user_clean == correct_clean:
+        return True
+
+    # 2. فحص الاحتواء (كلمة من إجابة طويلة)
+    if len(user_clean) > 3 and (user_clean in correct_clean or correct_clean in user_clean):
+        return True
+
+    # 3. فحص نسبة التشابه (تجاوز الأخطاء الإملائية 80%)
+    similarity = difflib.SequenceMatcher(None, user_clean, correct_clean).ratio()
+    if similarity >= 0.80:
+        return True
+
+    return False
+
+# ---- رصد الإجابات (Check Answers) ----
 @dp.message_handler(lambda m: not m.text.startswith('/'))
 async def check_ans(m: types.Message):
     cid = m.chat.id
+    # التأكد أن هناك مسابقة قائمة في هذه المجموعة
     if cid in active_quizzes and active_quizzes[cid]['active']:
-        user_ans = m.text.strip().lower()
-        correct_ans = active_quizzes[cid]['ans'].lower()
         
-        if user_ans == correct_ans:
+        user_raw = m.text
+        correct_raw = active_quizzes[cid]['ans']
+        
+        # استخدام المنطق الذكي للتحقق
+        if is_answer_correct(user_raw, correct_raw):
+            
+            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
             if not any(w['id'] == m.from_user.id for w in active_quizzes[cid]['winners']):
-                active_quizzes[cid]['winners'].append({"name": m.from_user.first_name, "id": m.from_user.id})
                 
+                active_quizzes[cid]['winners'].append({
+                    "name": m.from_user.first_name, 
+                    "id": m.from_user.id
+                })
+                
+                # إذا كان وضع المسابقة هو "السرعة"، نغلق السؤال فوراً
                 if active_quizzes[cid]['mode'] == 'السرعة ⚡':
-                    active_quizzes[cid]['active'] = False # تم إصلاح الخطأ هنا
-                    
+                    active_quizzes[cid]['active'] = False
 
-
+# ==========================================
 # --- [ إعداد حالات الإدارة ] ---
 class AdminStates(StatesGroup):
     waiting_for_new_token = State()
