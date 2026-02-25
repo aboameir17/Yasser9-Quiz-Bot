@@ -1739,7 +1739,7 @@ async def ask_new_token(c: types.CallbackQuery):
         reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("⬅️ تراجع", callback_data="admin_back"))
     )
     await AdminStates.waiting_for_new_token.set()
-# --- [ إدارة أسئلة البوت الرسمية - النسخة المصححة لياسر ] ---
+# --- [ إدارة أسئلة البوت الرسمية - نسخة ياسر الملك المحدثة 2026 ] ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('botq_'), user_id=ADMIN_ID)
 async def process_bot_questions_panel(c: types.CallbackQuery, state: FSMContext):
@@ -1753,68 +1753,101 @@ async def process_bot_questions_panel(c: types.CallbackQuery, state: FSMContext)
     elif action == "main":
         kb = InlineKeyboardMarkup(row_width=2)
         kb.add(
-            InlineKeyboardButton("📥 رفع أسئلة (Bulk)", callback_data="botq_upload"),
-            InlineKeyboardButton("🗂️ عرض الأقسام", callback_data="botq_viewcats"),
+            InlineKeyboardButton("📥 رفع (Bulk)", callback_data="botq_upload"),
+            InlineKeyboardButton("📂 عرض المجلدات", callback_data="botq_viewfolders"),
             InlineKeyboardButton("⬅️ عودة للرئيسية", callback_data="admin_back")
         )
-        await c.message.edit_text("🛠️ <b>إدارة الأسئلة (الموحدة)</b>", reply_markup=kb, parse_mode="HTML")
+        await c.message.edit_text("🛠️ <b>إدارة الأسئلة (نظام المجلدات)</b>", reply_markup=kb, parse_mode="HTML")
 
     elif action == "upload":
-        await c.message.edit_text("📥 أرسل الأسئلة بصيغة: سؤال+إجابة+القسم\n\nأرسل <b>خروج</b> للعودة.", parse_mode="HTML")
+        await c.message.edit_text(
+            "📥 <b>وضع الرفع المطور:</b>\n\n"
+            "أرسل الأسئلة بالصيغة التالية:\n"
+            "<code>سؤال+إجابة+القسم+المجلد</code>\n\n"
+            "أرسل <b>خروج</b> للعودة.", 
+            parse_mode="HTML"
+        )
         await state.set_state("wait_for_bulk_questions")
 
-    elif action == "viewcats":
-        res = supabase.table("bot_categories").select("*").execute()
+    # --- المستوى الأول: عرض المجلدات ---
+    elif action == "viewfolders":
+        res = supabase.table("folders").select("*").execute()
         if not res.data:
-            return await c.answer("⚠️ لا توجد أقسام مسجلة.", show_alert=True)
+            return await c.answer("⚠️ لا توجد مجلدات مسجلة.", show_alert=True)
         
-        categories = res.data
         kb = InlineKeyboardMarkup(row_width=2)
-        for cat in categories:
-            # التعديل الذهبي هنا: نربط الزر بـ ID القسم الحقيقي من سوبابيز
-            kb.insert(InlineKeyboardButton(f"📁 {cat['name']}", callback_data=f"botq_mng_{cat['id']}"))
+        for folder in res.data:
+            kb.insert(InlineKeyboardButton(f"📁 {folder['name']}", callback_data=f"botq_showcats_{folder['id']}"))
         
-        kb.add(InlineKeyboardButton("⬅️ عودة", callback_data="botq_main"))
-        await c.message.edit_text("🗂️ <b>أقسام أسئلة البوت الرسمية:</b>", reply_markup=kb, parse_mode="HTML")
+        kb.add(InlineKeyboardButton("⬅️ عودة للرئيسية", callback_data="botq_main"))
+        await c.message.edit_text("📂 <b>المجلدات الرئيسية:</b>\nاختر مجلداً لعرض أقسامه:", reply_markup=kb, parse_mode="HTML")
 
-    # --- معالج الضغط على اسم القسم (هذا الجزء الذي كان ناقصاً لديك) ---
+    # --- المستوى الثاني: عرض الأقسام داخل المجلد ---
+    elif action == "showcats":
+        folder_id = data_parts[2]
+        res = supabase.table("bot_categories").select("*").eq("folder_id", folder_id).execute()
+        
+        kb = InlineKeyboardMarkup(row_width=2)
+        if res.data:
+            for cat in res.data:
+                kb.insert(InlineKeyboardButton(f"🏷️ {cat['name']}", callback_data=f"botq_mng_{cat['id']}"))
+        else:
+            kb.add(InlineKeyboardButton("🚫 لا توجد أقسام هنا", callback_data="none"))
+            
+        kb.add(InlineKeyboardButton("🔙 عودة للمجلدات", callback_data="botq_viewfolders"))
+        await c.message.edit_text("🗂️ <b>الأقسام المتوفرة في هذا المجلد:</b>", reply_markup=kb, parse_mode="HTML")
+
+    # --- المستوى الثالث: إدارة القسم المختار ---
     elif action == "mng":
         cat_id = data_parts[2]
-        # جلب عدد الأسئلة الفعلي لهذا القسم من جدول bot_questions
-        # نستخدم العمود bot_category_id كما هو في ملفك الـ CSV
         res = supabase.table("bot_questions").select("id", count="exact").eq("bot_category_id", int(cat_id)).execute()
         q_count = res.count if res.count is not None else 0
         
         kb = InlineKeyboardMarkup(row_width=1)
         kb.add(
-            InlineKeyboardButton(f"🗑️ حذف جميع أسئلة هذا القسم ({q_count})", callback_data=f"botq_del_{cat_id}"),
-            InlineKeyboardButton("🔙 عودة للأقسام", callback_data="botq_viewcats")
+            InlineKeyboardButton(f"🗑️ حذف جميع الأسئلة ({q_count})", callback_data=f"botq_confdel_{cat_id}"),
+            InlineKeyboardButton("🔙 عودة للأقسام", callback_data="botq_viewfolders")
         )
-        
         await c.message.edit_text(
-            f"📂 <b>إدارة القسم (ID: {cat_id})</b>\n\n"
-            f"📊 عدد الأسئلة المتوفرة: <b>{q_count}</b>\n"
-            "ماذا تريد أن تفعل؟", 
+            f"📊 <b>إدارة القسم (ID: {cat_id})</b>\n\n"
+            f"عدد الأسئلة المتوفرة: <b>{q_count}</b>\n\n"
+            "⚠️ تنبيه: خيار الحذف سيقوم بمسح كافة الأسئلة التابعة لهذا القسم فقط.", 
             reply_markup=kb, parse_mode="HTML"
         )
 
-    # --- معالج حذف أسئلة القسم ---
-    elif action == "del":
+    # --- نظام الحماية: تأكيد الحذف (نعم / لا) ---
+    elif action == "confdel":
         cat_id = data_parts[2]
-        supabase.table("bot_questions").delete().eq("bot_category_id", int(cat_id)).execute()
-        await c.answer("✅ تم حذف جميع أسئلة القسم بنجاح", show_alert=True)
-        # العودة لقائمة الأقسام بعد الحذف
-        await process_bot_questions_panel(c, state) 
+        kb = InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            InlineKeyboardButton("✅ نعم، احذف", callback_data=f"botq_realdel_{cat_id}"),
+            InlineKeyboardButton("❌ تراجع (إلغاء)", callback_data=f"botq_mng_{cat_id}")
+        )
+        await c.message.edit_text(
+            "⚠️ <b>تأكيد الحذف النهائي!</b>\n\n"
+            "هل أنت متأكد من مسح جميع أسئلة هذا القسم؟\n"
+            "لا يمكن التراجع عن هذه العملية بعد التنفيذ.", 
+            reply_markup=kb, parse_mode="HTML"
+        )
+
+    # تنفيذ الحذف الفعلي
+    elif action == "realdel":
+        cat_id = data_parts[2]
+        try:
+            supabase.table("bot_questions").delete().eq("bot_category_id", int(cat_id)).execute()
+            await c.answer("✅ تم الحذف بنجاح", show_alert=True)
+            await process_bot_questions_panel(c, state) # العودة للرئيسية
+        except Exception as e:
+            await c.answer(f"❌ خطأ: {e}", show_alert=True)
 
     await c.answer()
-    
 
-# --- معالج الرفع الجماعي وأمر الخروج (ياسر الملك) ---
+# --- معالج الرفع المطور (سؤال+إجابة+قسم+مجلد) ---
 @dp.message_handler(state="wait_for_bulk_questions", user_id=ADMIN_ID)
 async def process_bulk_questions(message: types.Message, state: FSMContext):
     if message.text.strip() in ["خروج", "إلغاء", "exit"]:
         await state.finish()
-        await message.answer("✅ تم الخروج من وضع الرفع الجماعي والعودة.")
+        await message.answer("✅ تم الخروج من وضع الرفع.")
         return
 
     lines = message.text.split('\n')
@@ -1823,16 +1856,22 @@ async def process_bulk_questions(message: types.Message, state: FSMContext):
     for line in lines:
         if '+' in line:
             parts = line.split('+')
-            if len(parts) >= 3:
-                q_text, q_ans, cat_name = parts[0].strip(), parts[1].strip(), parts[2].strip()
+            if len(parts) == 4:
+                q_text, q_ans, cat_name, f_name = [p.strip() for p in parts]
                 try:
-                    cat_res = supabase.table("bot_categories").select("id").eq("name", cat_name).execute()
-                    if cat_res.data:
-                        cat_id = cat_res.data[0]['id']
-                    else:
-                        new_cat = supabase.table("bot_categories").insert({"name": cat_name}).execute()
-                        cat_id = new_cat.data[0]['id']
+                    # 1. فحص المجلد
+                    f_res = supabase.table("folders").select("id").eq("name", f_name).execute()
+                    f_id = f_res.data[0]['id'] if f_res.data else supabase.table("folders").insert({"name": f_name}).execute().data[0]['id']
 
+                    # 2. فحص القسم وربطه
+                    c_res = supabase.table("bot_categories").select("id").eq("name", cat_name).execute()
+                    if c_res.data:
+                        cat_id = c_res.data[0]['id']
+                        supabase.table("bot_categories").update({"folder_id": f_id}).eq("id", cat_id).execute()
+                    else:
+                        cat_id = supabase.table("bot_categories").insert({"name": cat_name, "folder_id": f_id}).execute().data[0]['id']
+
+                    # 3. رفع السؤال
                     supabase.table("bot_questions").insert({
                         "question_content": q_text,
                         "correct_answer": q_ans,
