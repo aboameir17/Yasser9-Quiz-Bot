@@ -292,15 +292,16 @@ async def render_final_settings_panel(message, data, owner_id):
 # ==========================================
 # 3. دوال الفحص الأمني (Security Helpers)
 # ==========================================
-
 async def get_group_status(chat_id):
-    """فحص حالة تفعيل المجموعة في قاعدة البيانات"""
+    """فحص حالة تفعيل المجموعة في الجدول الموحد الجديد groups_hub"""
     try:
-        res = supabase.table("allowed_groups").select("status").eq("group_id", chat_id).execute()
+        # البحث في الجدول الموحد بدلاً من allowed_groups
+        res = supabase.table("groups_hub").select("status").eq("group_id", chat_id).execute()
         return res.data[0]['status'] if res.data else "not_found"
-    except:
+    except Exception as e:
+        logging.error(f"Error checking group status: {e}")
         return "error"
-        
+
 # ==========================================
 
 class Form(StatesGroup):
@@ -309,24 +310,25 @@ class Form(StatesGroup):
     waiting_for_ans1 = State()
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
-    
-    # السطر اللي كان ناقص وسبب المشكلة:
     waiting_for_quiz_name = State()
+
 # --- 1. الأوامر الأساسية ونظام التفعيل الاحترافي ---
 
 @dp.message_handler(commands=['start'])
 async def start_cmd(message: types.Message):
     user_mention = message.from_user.mention
     welcome_txt = (
-        f"مرحبا بك {user_mention} في بوت مسابقات نسخة تجريبيه.\n\n"
-        f"تستطيع الآن إضافة أقسامك الخاصة وقم بتهيئة المسابقات منها.\n\n"
-        f"🔹 <b>لتفعيل البوت في مجموعتك:</b> أرسل كلمة (تفعيل)\n"
+        f"مرحباً بك {user_mention} في Questions Bot 🤖\n\n"
+        f"نظام المسابقات الموحد والمنافسة الكبرى بين المجموعات.\n\n"
+        f"🔹 <b>لتفعيل البوت:</b> أرسل كلمة (تفعيل) داخل القروب\n"
         f"🔹 <b>للإعدادات:</b> أرسل (تحكم)\n"
-        f"🔹 <b>للبدء:</b> أرسل (مسابقة)"
+        f"🔹 <b>للمسابقات:</b> أرسل (مسابقة)\n"
+        f"🔹 <b>لملفك الشخصي:</b> أرسل (عني)"
     )
-    await message.answer(welcome_txt)
+    await message.answer(welcome_txt, parse_mode="HTML")
+    
 
-# --- [ أمر التفعيل بالقالب الملكي المعتمد ] ---
+    # --- [ أمر التفعيل بالقالب الملكي المعتمد ] ---
 
 @dp.message_handler(lambda m: m.text == "تفعيل", chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
 async def activate_group_hub(message: types.Message):
