@@ -2036,38 +2036,40 @@ async def process_bulk_questions(message: types.Message, state: FSMContext):
 # إدارة مجموعات الهب (الموافقة، الحظر، التفعيل)
 # ==========================================
 
-# 1. عرض القائمة الشاملة للمجموعات (مع تمييز المنتظرة)
+# 1. قائمة المجموعات (عرض الحالات: انتظار ⏳، نشط ✅، محظور 🚫)
 @dp.callback_query_handler(lambda c: c.data == "admin_view_pending", user_id=ADMIN_ID)
 async def admin_manage_groups(c: types.CallbackQuery):
-    res = supabase.table("groups_hub").select("group_id, group_name, status").execute()
-    
-    if not res.data:
-        return await c.answer("📭 لا توجد مجموعات مسجلة بعد.", show_alert=True)
-    
-    txt = "🛠️ <b>إدارة مجموعات الهب الموحد:</b>\n\n" \
-          "⏳ = بانتظار موافقتك\n" \
-          "✅ = نشطة وشغالة\n" \
-          "🚫 = محظورة"
-    
-    kb = InlineKeyboardMarkup(row_width=1)
-    for g in res.data:
-        # تحديد الإيقونة بناءً على الحالة
-        if g['status'] == 'pending':
-            status_icon = "⏳"
-        elif g['status'] == 'active':
-            status_icon = "✅"
-        else:
-            status_icon = "🚫"
-            
-        kb.add(
-            InlineKeyboardButton(
-                f"{status_icon} {g['group_name']}", 
-                callback_data=f"manage_grp_{g['group_id']}"
-            )
+    try:
+        res = supabase.table("groups_hub").select("group_id, group_name, status").execute()
+        
+        if not res.data:
+            return await c.answer("📭 لا توجد مجموعات مسجلة بعد.", show_alert=True)
+        
+        txt = (
+            "🛠️ <b>إدارة مجموعات الهب الموحد:</b>\n\n"
+            "⏳ = بانتظار موافقتك (Pending)\n"
+            "✅ = نشطة وشغالة (Active)\n"
+            "🚫 = محظورة (Blocked)\n"
+            "━━━━━━━━━━━━━━"
         )
-    
-    kb.add(InlineKeyboardButton("⬅️ العودة للقائمة الرئيسية", callback_data="admin_back"))
-    await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
+        
+        kb = InlineKeyboardMarkup(row_width=1)
+        for g in res.data:
+            # تحديد الإيقونة بناءً على الحالة
+            status_icon = "⏳" if g['status'] == 'pending' else "✅" if g['status'] == 'active' else "🚫"
+            
+            kb.add(
+                InlineKeyboardButton(
+                    f"{status_icon} {g['group_name']}", 
+                    callback_data=f"manage_grp_{g['group_id']}"
+                )
+            )
+        
+        kb.add(InlineKeyboardButton("⬅️ العودة للقائمة الرئيسية", callback_data="admin_back"))
+        await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Error viewing groups: {e}")
+        await c.answer("❌ خطأ في جلب البيانات")
 
 # 2. لوحة التحكم بمجموعة محددة (إعطاء الصلاحية أو سحبها)
 @dp.callback_query_handler(lambda c: c.data.startswith('manage_grp_'), user_id=ADMIN_ID)
@@ -2080,111 +2082,65 @@ async def group_control_options(c: types.CallbackQuery):
     g = res.data[0]
     status_map = {'active': 'نشطة ✅', 'pending': 'بانتظار الموافقة ⏳', 'blocked': 'محظورة 🚫'}
     
-    txt = (f"📍 <b>إدارة المجموعة:</b> {g['group_name']}\n"
-           f"🆔 الآيدي: <code>{g_id}</code>\n"
-           f"⚙️ الحالة: <b>{status_map.get(g['status'], g['status'])}</b>")
+    txt = (
+        f"📍 <b>إدارة المجموعة:</b> {g['group_name']}\n"
+        f"🆔 الآيدي: <code>{g_id}</code>\n"
+        f"⚙️ الحالة الحالية: <b>{status_map.get(g['status'], g['status'])}</b>\n"
+        f"━━━━━━━━━━━━━━"
+    )
 
     kb = InlineKeyboardMarkup(row_width=2)
-    
-    # خيارات ذكية بناءً على الحالة
-    if g['status'] == 'pending' or g['status'] == 'blocked':
-        kb.add(InlineKeyboardButton("✅ موافقة / تفعيل", callback_data=f"auth_approve_{g_id}"))
-    
-    if g['status'] == 'active' or g['status'] == 'pending':
-        kb.add(InlineKeyboardButton("🚫 حظر / رفض", callback_data=f"auth_block_{g_id}"))
+    # تظهر الأزرار حسب الحاجة (تفعيل للمنتظر والمحظور، وحظر للنشط والمنتظر)
+    if g['status'] != 'active':
+        kb.add(InlineKeyboardButton("✅ موافقة وتفعيل", callback_data=f"auth_approve_{g_id}"))
+    if g['status'] != 'blocked':
+        kb.add(InlineKeyboardButton("🚫 رفض وحظر", callback_data=f"auth_block_{g_id}"))
     
     kb.add(InlineKeyboardButton("⬅️ رجوع للقائمة", callback_data="admin_view_pending"))
     await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
 
-# ==========================================
-# إدارة مجموعات الهب (الموافقة، الحظر، التفعيل)
-# ==========================================
-
-# 1. عرض القائمة الشاملة للمجموعات (مع تمييز المنتظرة)
-@dp.callback_query_handler(lambda c: c.data == "admin_view_pending", user_id=ADMIN_ID)
-async def admin_manage_groups(c: types.CallbackQuery):
-    res = supabase.table("groups_hub").select("group_id, group_name, status").execute()
-    
-    if not res.data:
-        return await c.answer("📭 لا توجد مجموعات مسجلة بعد.", show_alert=True)
-    
-    txt = "🛠️ <b>إدارة مجموعات الهب الموحد:</b>\n\n" \
-          "⏳ = بانتظار موافقتك\n" \
-          "✅ = نشطة وشغالة\n" \
-          "🚫 = محظورة"
-    
-    kb = InlineKeyboardMarkup(row_width=1)
-    for g in res.data:
-        # تحديد الإيقونة بناءً على الحالة
-        if g['status'] == 'pending':
-            status_icon = "⏳"
-        elif g['status'] == 'active':
-            status_icon = "✅"
-        else:
-            status_icon = "🚫"
-            
-        kb.add(
-            InlineKeyboardButton(
-                f"{status_icon} {g['group_name']}", 
-                callback_data=f"manage_grp_{g['group_id']}"
-            )
-        )
-    
-    kb.add(InlineKeyboardButton("⬅️ العودة للقائمة الرئيسية", callback_data="admin_back"))
-    await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
-
-# 2. لوحة التحكم بمجموعة محددة (إعطاء الصلاحية أو سحبها)
-@dp.callback_query_handler(lambda c: c.data.startswith('manage_grp_'), user_id=ADMIN_ID)
-async def group_control_options(c: types.CallbackQuery):
-    g_id = c.data.split('_')[2]
-    res = supabase.table("groups_hub").select("group_name, status").eq("group_id", g_id).execute()
-    
-    if not res.data: return await c.answer("⚠️ المجموعة غير موجودة.")
-    
-    g = res.data[0]
-    status_map = {'active': 'نشطة ✅', 'pending': 'بانتظار الموافقة ⏳', 'blocked': 'محظورة 🚫'}
-    
-    txt = (f"📍 <b>إدارة المجموعة:</b> {g['group_name']}\n"
-           f"🆔 الآيدي: <code>{g_id}</code>\n"
-           f"⚙️ الحالة: <b>{status_map.get(g['status'], g['status'])}</b>")
-
-    kb = InlineKeyboardMarkup(row_width=2)
-    
-    # خيارات ذكية بناءً على الحالة
-    if g['status'] == 'pending' or g['status'] == 'blocked':
-        kb.add(InlineKeyboardButton("✅ موافقة / تفعيل", callback_data=f"auth_approve_{g_id}"))
-    
-    if g['status'] == 'active' or g['status'] == 'pending':
-        kb.add(InlineKeyboardButton("🚫 حظر / رفض", callback_data=f"auth_block_{g_id}"))
-    
-    kb.add(InlineKeyboardButton("⬅️ رجوع للقائمة", callback_data="admin_view_pending"))
-    await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
-
-# 3. معالج العمليات (تفعيل وإرسال إشعار للقروب)
+# 3. معالج العمليات (الموافقة النهائية + إرسال الدليل الملكي للقروب)
 @dp.callback_query_handler(lambda c: c.data.startswith(('auth_approve_', 'auth_block_')), user_id=ADMIN_ID)
 async def process_auth_callback(c: types.CallbackQuery):
     action = c.data.split('_')[1]
     target_id = c.data.split('_')[2]
     
     if action == "approve":
+        # تحديث الحالة في قاعدة البيانات
         supabase.table("groups_hub").update({"status": "active"}).eq("group_id", target_id).execute()
+        
+        # جلب اسم القروب لعرضه في الترحيب
+        res_n = supabase.table("groups_hub").select("group_name").eq("group_id", target_id).execute()
+        g_name = res_n.data[0]['group_name'] if res_n.data else "القروب"
+        
         await c.answer("تم تفعيل المجموعة بنجاح! ✅", show_alert=True)
         
-        # إرسال البشارة للقروب (القالب اللي تحبه)
+        # إرسال القالب الملكي التعليمي للقروب
         try:
-            await bot.send_message(target_id, 
-                f"🎉 <b>تمت موافقة المطور على تفعيل القروب!</b>\n"
+            full_template = (
+                f"🎉 <b>تم تفعيل القروب بنجاح!</b>\n"
                 f"━━━━━━━━━━━━━━\n"
+                f"📍 اسم القروب: <b>{g_name}</b>\n"
                 f"⚙️ الحالة: متصل (Active) ✅\n"
-                f"🌍 الآن يمكنكم استخدام (تحكم) والبدء بالمسابقات!\n"
-                f"━━━━━━━━━━━━━━", parse_mode="HTML")
-        except: pass
+                f"🌍 النشر العام: مفعل ✅\n"
+                f"━━━━━━━━━━━━━━\n\n"
+                f"🚀 <b>دليلك السريع للبدء:</b>\n\n"
+                f"🔹 <b>تحكم :</b> لفتح لوحة الإعدادات (للمشرفين) ⚙️\n"
+                f"🔹 <b>مسابقة :</b> لبدء جولة أسئلة جديدة في القروب 📝\n"
+                f"🔹 <b>عني :</b> لعرض بطاقتك الشخصية ونقاطك 👤\n"
+                f"🔹 <b>القروبات :</b> ترتيب أقوى مجموعات البوت 🌍\n\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"الآن يمكنكم بدء المسابقات وجمع النقاط! ✨"
+            )
+            await bot.send_message(target_id, full_template, parse_mode="HTML")
+        except Exception as e:
+            logging.error(f"Error sending activation template: {e}")
 
     elif action == "block":
         supabase.table("groups_hub").update({"status": "blocked"}).eq("group_id", target_id).execute()
         await c.answer("تم الحظر / الرفض ❌", show_alert=True)
     
-    # تحديث القائمة فوراً
+    # تحديث القائمة أمام المطور فوراً
     await admin_manage_groups(c)
 # ==========================================
 # 5. نهاية الملف: ضمان التشغيل 24/7 (Keep-Alive)
