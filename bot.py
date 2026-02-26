@@ -326,54 +326,58 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(welcome_txt)
 
-# --- [ أمر التحكم الرئيسي - بعد أمر start مباشرة ] ---
+# --- [ أمر التفعيل بالقالب الملكي المعتمد ] ---
 
-@dp.message_handler(lambda m: m.text == "تحكم")
-async def control_panel(message: types.Message, user_id: int = None):
-    # إذا ما أرسلنا آيدي، ياخذه من الرسالة.. وإذا أرسلنا آيدي (مثل حالة الرجوع) يستخدمه هو
-    if not user_id:
-        user_id = message.from_user.id
+@dp.message_handler(lambda m: m.text == "تفعيل", chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
+async def activate_group_hub(message: types.Message):
+    # الحماية: التحقق من أن المرسل أدمن أو المطور
+    user_id = message.from_user.id
+    chat_member = await message.chat.get_member(user_id)
     
-    # الحالة الأولى: إذا كانت الدردشة "خاص" (Private)
-    if message.chat.type == 'private':
-        # في الخاص، البوت يفتح اللوحة فوراً للمستخدم لأنها دردشة شخصية
-        pass 
-    
-    # الحالة الثانية: إذا كانت الدردشة "مجموعة" (Group/Supergroup)
-    else:
+    if not (chat_member.is_chat_admin() or user_id == ADMIN_ID):
+        return await message.reply("⚠️ عذراً، هذا الأمر مخصص لمشرفي القروب فقط!")
+
+    group_id = message.chat.id
+    group_name = message.chat.title
+
+    try:
+        # 1. فحص وجود القروب في الجدول الموحد groups_hub
+        res = supabase.table("groups_hub").select("*").eq("group_id", group_id).execute()
         
-        if user_id == ADMIN_ID:
-            pass
+        if res.data:
+            # إذا كان محظوراً نعيد تفعيله، وإذا كان مفعل نعطيه تأكيد
+            if res.data[0]['status'] == 'blocked':
+                supabase.table("groups_hub").update({"status": "active"}).eq("group_id", group_id).execute()
+            else:
+                return await message.reply("🛡️ <b>القروب مفعل مسبقاً وجاهز للعمل!</b>", parse_mode="HTML")
         else:
-            # ثانياً: فحص حالة تفعيل المجموعة من قاعدة البيانات
-            status = await get_group_status(message.chat.id)
-            
-            # إذا لم تكن المجموعة مفعلة، نمنع الجميع حتى المشرفين
-            if status != "active":
-                return await message.reply(
-                    "⚠️ <b>عذراً، يجب تفعيل المجموعة أولاً بواسطة المطور.</b>\n"
-                    "أرسل كلمة (تفعيل) لطلب الموافقة.", 
-                    parse_mode="HTML"
-                )
-            
-            # ثالثاً: إذا كانت مفعلة، نتأكد أن الذي أرسل الأمر "مشرف"
-            member = await bot.get_chat_member(message.chat.id, user_id)
-            if not (member.is_chat_admin() or member.is_chat_creator()):
-                return await message.reply("⚠️ هذه اللوحة مخصصة لمشرفي المجموعة فقط.")
+            # 2. تسجيل جديد في الهب الموحد (أول مرة)
+            supabase.table("groups_hub").insert({
+                "group_id": group_id,
+                "group_name": group_name,
+                "status": "active",
+                "is_global": True,  # تفعيل النشر العام تلقائياً للمسابقات الكبرى
+                "group_members_points": {}, # سجل نقاط أعضاء هذا القروب
+                "global_users_points": {},  # سجل النقاط العالمي (عبر كل القروبات)
+                "total_group_score": 0      # إجمالي نقاط القروب للمنافسة
+            }).execute()
 
-    # --- [ استدعاء اللوحة الذكية ] ---
-    # هنا يتم استدعاء الدالة get_main_control_kb وتمرير user_id لها
-    # لضمان أن صاحب اللوحة فقط هو من يتحكم بالأزرار
-    
-    txt = (f"👋 أهلا بك في لوحة أعدادات المسابقات الخاصة \n"
-           f"👑 المطور: <b>{OWNER_USERNAME}</b>")
-    
-    await message.answer(
-        txt, 
-        reply_markup=get_main_control_kb(user_id), 
-        disable_web_page_preview=True
-    )
-    
+        # 3. إرسال القالب الذي أعجبك (اللمسة النهائية)
+        await message.reply(
+            f"🎉 <b>تم تفعيل القروب بنجاح!</b>\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"📍 اسم القروب: {group_name}\n"
+            f"⚙️ الحالة: متصل (Active)\n"
+            f"🌍 النشر العام: مفعل ✅\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"الآن يمكنكم بدء المسابقات وجمع النقاط!", 
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        logging.error(f"Activation Error: {e}")
+        await message.reply("❌ حدث خطأ تقني، تأكد من إعدادات قاعدة البيانات.")
+        
 # ==========================================
 # التعديل في السطر 330 (أضفنا close_bot_)
 @dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_', 'back_')), state="*")
