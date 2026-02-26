@@ -1516,7 +1516,6 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             c.data = f"manage_quiz_{quiz_id}_{user_id}"
             return await handle_secure_actions(c, state)
 
-        try:
         # 6️⃣ حذف وإغلاق وتشغيل (نفس كودك السابق المصلح)
         if c.data.startswith('confirm_del_'):
             quiz_id = data_parts[2]
