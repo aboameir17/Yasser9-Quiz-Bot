@@ -1425,7 +1425,7 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             q_time, q_count = q.get('time_limit', 15), q.get('questions_count', 10)
             q_mode = q.get('mode', 'السرعة ⚡')
             is_hint = q.get('smart_hint', False)
-            is_public = q.get('quiz_scope') == "عام"
+            is_public = q.get('is_public', False)
 
             text = (
                 f"┏━━━━━ إعدادات: {q['quiz_name']} ━━━━━┓\n"
@@ -1457,10 +1457,18 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
         # 3️⃣ التبديلات (Toggles)
         elif any(c.data.startswith(x) for x in ['toggle_hint_', 'toggle_speed_', 'toggle_scope_', 'set_c_']):
             quiz_id = data_parts[2]
+            # محرك النطاق (Scope) - المصلح ليتناسب مع عمود is_public
             if 'toggle_scope_' in c.data:
-                res = supabase.table("saved_quizzes").select("quiz_scope").eq("id", quiz_id).single().execute()
-                new_s = "عام" if (res.data.get('quiz_scope', 'خاص') == "خاص") else "خاص"
-                supabase.table("saved_quizzes").update({"quiz_scope": new_s}).eq("id", quiz_id).execute()
+                res = supabase.table("saved_quizzes").select("is_public").eq("id", quiz_id).single().execute()
+                # جلب القيمة الحالية (True أو False)
+                curr_is_public = res.data.get('is_public', False)
+                # عكس القيمة
+                new_is_public = not curr_is_public
+                # التحديث في قاعدة البيانات
+                supabase.table("saved_quizzes").update({"is_public": new_is_public}).eq("id", quiz_id).execute()
+                
+                status_text = "عام 🌐" if new_is_public else "داخلي 📍"
+                await c.answer(f"✅ أصبح النطاق: {status_text}")
             elif 'toggle_hint_' in c.data:
                 res = supabase.table("saved_quizzes").select("smart_hint").eq("id", quiz_id).single().execute()
                 new_h = not res.data.get('smart_hint', False)
