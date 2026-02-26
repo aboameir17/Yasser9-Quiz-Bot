@@ -1705,12 +1705,17 @@ async def delete_after(message, delay):
 # ==========================================
 # [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
-async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_type):
+async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine_type):
+    # إذا كان chat_ids رقم واحد (مسابقة خاصة) نحوله لقائمة ليعمل المحرك
+    if not isinstance(chat_ids, list):
+        chat_ids = [chat_ids]
+
     random.shuffle(questions)
-    overall_scores = {}
+    # قاموس لتخزين النقاط لكل مجموعة (عشان ما تختلط النقاط في الإذاعة)
+    group_scores = {cid: {} for cid in chat_ids}
 
     for i, q in enumerate(questions):
-        # 1. استخراج الإجابة والنص حسب نوع المصدر
+        # 1. استخراج الإجابة والنص حسب نوع المصدر (نفس كودك بالضبط)
         if engine_type == "bot":
             ans = str(q.get('correct_answer') or "").strip()
             cat_name = q.get('category') or "بوت"
@@ -1721,83 +1726,95 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
             ans = str(q.get('correct_answer') or q.get('ans') or "").strip()
             cat_name = "قسم خاص 🔒"
 
-        # 2. تصفير حالة السؤال وتجهيز الذاكرة النشطة
-        active_quizzes[chat_id] = {
-            "active": True, 
-            "ans": ans, 
-            "winners": [], 
-            "mode": quiz_data['mode'], 
-            "hint_sent": False
-        }
-        
-        # 3. إرسال قالب السؤال للقروب
-        await send_quiz_question(chat_id, q, i+1, len(questions), {
-            'owner_name': owner_name, 
-            'mode': quiz_data['mode'], 
-            'time_limit': quiz_data['time_limit'], 
-            'cat_name': cat_name
-        })
+        # 2. تصفير حالة السؤال وتجهيز الذاكرة النشطة لكل المجموعات
+        for cid in chat_ids:
+            active_quizzes[cid] = {
+                "active": True, 
+                "ans": ans, 
+                "winners": [], 
+                "mode": quiz_data['mode'], 
+                "hint_sent": False
+            }
+            
+            # 3. إرسال قالب السؤال للقروب (استدعاء دالتك)
+            asyncio.create_task(send_quiz_question(cid, q, i+1, len(questions), {
+                'owner_name': owner_name, 
+                'mode': quiz_data['mode'], 
+                'time_limit': quiz_data['time_limit'], 
+                'cat_name': cat_name
+            }))
         
         # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
         start_time = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
-        h_msg = None 
+        hint_messages = {cid: None for cid in chat_ids} 
         
         while time.time() - start_time < t_limit:
-            if not active_quizzes.get(chat_id) or not active_quizzes[chat_id]['active']:
-                break
+            # إذا الكل جاوبوا نوقف (في طور السرعة)
+            all_done = all(not active_quizzes[cid]['active'] for cid in chat_ids)
+            if all_done: break
             
-            if quiz_data.get('smart_hint') and not active_quizzes[chat_id]['hint_sent']:
+            if quiz_data.get('smart_hint'):
                 if (time.time() - start_time) >= (t_limit / 2):
-                    try:
-                        hint_text = await generate_smart_hint(ans)
-                        h_msg = await bot.send_message(chat_id, hint_text, parse_mode="HTML")
-                        active_quizzes[chat_id]['hint_sent'] = True
-                    except Exception as e:
-                        logging.error(f"⚠️ خطأ في التلميح: {e}")
+                    hint_text = await generate_smart_hint(ans) # دالة التلميح
+                    for cid in chat_ids:
+                        if not active_quizzes[cid]['hint_sent']:
+                            try:
+                                msg = await bot.send_message(cid, hint_text, parse_mode="HTML")
+                                hint_messages[cid] = msg
+                                active_quizzes[cid]['hint_sent'] = True
+                            except: pass
 
             await asyncio.sleep(0.5)
 
-        if h_msg:
-            asyncio.create_task(delete_after(h_msg, 0))
+        # حذف رسائل التلميح بعد انتهاء الوقت
+        for cid in chat_ids:
+            if hint_messages[cid]:
+                asyncio.create_task(delete_after(hint_messages[cid], 0))
 
-        # 5. إنهاء السؤال وحساب النقاط
-        if chat_id in active_quizzes:
-            active_quizzes[chat_id]['active'] = False
-            for w in active_quizzes[chat_id]['winners']:
-                uid = w['id']
-                if uid not in overall_scores: 
-                    overall_scores[uid] = {"name": w['name'], "points": 0}
-                overall_scores[uid]['points'] += 10
+        # 5. إنهاء السؤال وحساب النقاط لكل مجموعة
+        for cid in chat_ids:
+            if cid in active_quizzes:
+                active_quizzes[cid]['active'] = False
+                for w in active_quizzes[cid]['winners']:
+                    uid = w['id']
+                    if uid not in group_scores[cid]: 
+                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                    group_scores[cid][uid]['points'] += 10
         
-            # 6. عرض لوحة المبدعين اللحظية
-            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
+                # 6. عرض لوحة المبدعين اللحظية في كل مجموعة
+                asyncio.create_task(send_creative_results(cid, ans, active_quizzes[cid]['winners'], group_scores[cid]))
         
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
             try:
-                countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
+                # إرسال عداد لكل مجموعة
+                countdown_msgs = []
+                for cid in chat_ids:
+                    m = await bot.send_message(cid, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
+                    countdown_msgs.append(m)
                 
-                # سنقوم بالتحديث كل ثانية ونصف أو ثانيتين لتقليل الضغط
-                for count in range(4, 0, -2): # تقليل عدد التحديثات (تحديث كل ثانيتين)
+                for count in range(4, 0, -2): 
                     await asyncio.sleep(2)
                     icon = icons[count] if count < len(icons) else "⚪"
-                    try:
-                        await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
-                    except Exception as e:
-                        logging.warning(f"Flood avoidance: {e}")
-                        break # توقف عن التحديث إذا ضغط التليجرام
+                    for m in countdown_msgs:
+                        try: await m.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
+                        except: break
                 
                 await asyncio.sleep(1.5)
-                await countdown_msg.delete()
+                for m in countdown_msgs:
+                    try: await m.delete()
+                    except: pass
             except Exception as e:
                 logging.error(f"Countdown Error: {e}")
         else:
             await asyncio.sleep(2)
-    # 7. إعلان لوحة الشرف النهائية
-    await send_final_results(chat_id, overall_scores, len(questions))
 
+    # 7. إعلان لوحة الشرف النهائية لكل مجموعة
+    for cid in chat_ids:
+        asyncio.create_task(send_final_results(cid, group_scores[cid], len(questions)))
+        
 # ==========================================
 # 4. الجزء الثالث: قالب السؤال والتلميح...........     
 # ==========================================
