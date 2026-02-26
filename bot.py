@@ -1516,7 +1516,8 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             c.data = f"manage_quiz_{quiz_id}_{user_id}"
             return await handle_secure_actions(c, state)
 
-        # 6️⃣ حذف وإغلاق وتشغيل (نفس كودك السابق)
+        try:
+        # 6️⃣ حذف وإغلاق وتشغيل (نفس كودك السابق المصلح)
         if c.data.startswith('confirm_del_'):
             quiz_id = data_parts[2]
             kb = InlineKeyboardMarkup().add(
@@ -1537,19 +1538,27 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             quiz_id = data_parts[1]
             res = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
             q_data = res.data
-            await c.answer("🚀 انطلقنا!")
-            await countdown_timer(c.message, 5)
-            await (engine_bot_questions if q_data.get('is_bot_quiz') else engine_user_questions)(c.message.chat.id, q_data, c.from_user.first_name)
+            
+            # فحص النطاق قبل التشغيل
+            if q_data.get('quiz_scope') == "عام":
+                await start_broadcast_process(c, quiz_id, user_id)
+            else:
+                await c.answer("🚀 انطلقنا!")
+                # استدعاء دالة الإعلان ثم التشغيل
+                await announce_quiz_type(c.message.chat.id, q_data, "user" if not q_data.get('is_bot_quiz') else "bot")
+                await (engine_bot_questions if q_data.get('is_bot_quiz') else engine_user_questions)(c.message.chat.id, q_data, c.from_user.first_name)
             return
 
         if c.data.startswith('close_'):
             await c.message.delete()
             return
 
-     except Exception as e:
-        logging.error(f"Error: {e}")
-        await c.answer("🚨 حدث خطأ")
-        
+    except Exception as e:
+        logging.error(f"Error in handle_secure_actions: {e}")
+        try:
+            await c.answer("🚨 حدث خطأ في تنفيذ الإجراء", show_alert=True)
+        except:
+            pass
 # ==========================================
 # 3. نظام المحركات المنفصلة (ياسر المطور - نسخة عشوائية)
 # ==========================================
