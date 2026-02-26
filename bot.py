@@ -290,8 +290,9 @@ async def render_final_settings_panel(message, data, owner_id):
     
     await message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
 # ==========================================
-# 3. دوال الفحص الأمني (Security Helpers)
+# 3. دوال الفحص الأمني والمحركات (Security Helpers & Engines)
 # ==========================================
+
 async def get_group_status(chat_id):
     """فحص حالة تفعيل المجموعة في الجدول الموحد الجديد groups_hub"""
     try:
@@ -300,6 +301,74 @@ async def get_group_status(chat_id):
     except Exception as e:
         logging.error(f"Error checking group status: {e}")
         return "error"
+
+async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
+    """محرك الإذاعة العامة - إرسال الدعوات لجميع القروبات المفعلة"""
+    # جلب بيانات المسابقة
+    res_q = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
+    q = res_q.data
+    
+    # 1. جلب المجموعات المفعلة من الهب الموحد
+    groups_res = supabase.table("groups_hub").select("group_id").eq("status", "active").execute()
+    
+    if not groups_res.data:
+        return await c.answer("⚠️ لا توجد مجموعات مفعلة في الهب حالياً.")
+
+    # 2. قالب الدعوة الملكي
+    broadcast_text = (
+        f"📢 **إعلان: مسابقة عالمية مرتقبة!** 🌐\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"🏆 المسابقة: **{q['quiz_name']}**\n"
+        f"👤 المنظم: {c.from_user.first_name}\n"
+        f"⏳ الوقت المتبقي للانطلاق: **1 دقيقة**\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"⚠️ **تنبيه للمشرفين:** اضغط على الزر أدناه لإدراج مجموعتك في هذا التحدي العالمي!"
+    )
+    
+    kb = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("✅ قبول التحدي والانضمام", callback_data=f"accept_q_{quiz_id}_{owner_id}")
+    )
+
+    sent_count = 0
+    for g in groups_res.data:
+        try:
+            await bot.send_message(g['group_id'], broadcast_text, reply_markup=kb, parse_mode="Markdown")
+            sent_count += 1
+        except: continue
+    
+    await c.answer(f"🚀 تم بث التحدي في {sent_count} مجموعة مفعلة!", show_alert=True)
+    await c.message.delete() 
+
+    # 3. انتظار دقيقة لتجميع المشاركين
+    await asyncio.sleep(60)
+    
+    # 4. الانطلاق للعد التنازلي
+    await launch_global_countdown(quiz_id, q)
+
+async def launch_global_countdown(quiz_id, q_data):
+    """محرك العد التنازلي المتزامن بالإيموجي قبل انطلاق الأسئلة"""
+    participants = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz_id).execute()
+    
+    if not participants.data:
+        return 
+
+    timer_icons = ["🔟", "9️⃣", "8️⃣", "7️⃣", "6️⃣", "5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣", "🚀"]
+
+    for icon in timer_icons:
+        tasks = []
+        for p in participants.data:
+            text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق! أظهروا لنا قوتكم..**"
+            tasks.append(bot.send_message(p['chat_id'], text, parse_mode="Markdown"))
+        
+        await asyncio.gather(*tasks)
+        await asyncio.sleep(1.2)
+
+    # تشغيل محرك الأسئلة لكل المجموعات المشاركة
+    for p in participants.data:
+        asyncio.create_task(engine_user_questions(p['chat_id'], q_data, "إذاعة عامة 🌐"))
+
+    # تنظيف جدول المشاركين المؤقت
+    supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
 
 # ==========================================
 # 4. حالات النظام (FSM States)
