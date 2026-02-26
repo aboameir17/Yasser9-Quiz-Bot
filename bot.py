@@ -302,27 +302,29 @@ async def get_group_status(chat_id):
         logging.error(f"Error checking group status: {e}")
         return "error"
 
+
 async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
     """محرك الإذاعة العامة - إرسال الدعوات لجميع القروبات المفعلة"""
-    # جلب بيانات المسابقة
+    # 1. جلب بيانات المسابقة بأمان
     res_q = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
     q = res_q.data
-    
-    # 1. جلب المجموعات المفعلة من الهب الموحد
+    if not q: return await c.answer("❌ تعذر جلب بيانات المسابقة")
+
+    # 2. جلب المجموعات المفعلة من الهب
     groups_res = supabase.table("groups_hub").select("group_id").eq("status", "active").execute()
     
     if not groups_res.data:
-        return await c.answer("⚠️ لا توجد مجموعات مفعلة في الهب حالياً.")
+        return await c.answer("⚠️ لا توجد مجموعات مفعلة في الهب حالياً.", show_alert=True)
 
-    # 2. قالب الدعوة الملكي
+    # 3. قالب الدعوة الملكي (التنسيق الموحد)
     broadcast_text = (
-        f"📢 **إعلان: مسابقة عالمية مرتقبة!** 🌐\n"
+        f"📢 **إعلان: مسابقة عالمية منطلقة الآن!** 🌐\n"
         f"━━━━━━━━━━━━━━\n"
-        f"🏆 المسابقة: **{q['quiz_name']}**\n"
-        f"👤 المنظم: {c.from_user.first_name}\n"
-        f"⏳ الوقت المتبقي للانطلاق: **1 دقيقة**\n"
+        f"🏆 المسابقة: **{q.get('quiz_name', 'تحدي جديد')}**\n"
+        f"👤 المنظم: **{c.from_user.first_name}**\n"
+        f"⏳ الوقت المتبقي للانطلاق: **60 ثانية**\n"
         f"━━━━━━━━━━━━━━\n"
-        f"⚠️ **تنبيه للمشرفين:** اضغط على الزر أدناه لإدراج مجموعتك في هذا التحدي العالمي!"
+        f"⚠️ **للمشرفين:** اضغط أدناه لإدراج مجموعتك في التحدي!"
     )
     
     kb = InlineKeyboardMarkup().add(
@@ -334,22 +336,26 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
         try:
             await bot.send_message(g['group_id'], broadcast_text, reply_markup=kb, parse_mode="Markdown")
             sent_count += 1
+            await asyncio.sleep(0.05) # حماية من السبام
         except: continue
     
-    await c.answer(f"🚀 تم بث التحدي في {sent_count} مجموعة مفعلة!", show_alert=True)
-    await c.message.delete() 
+    await c.answer(f"🚀 تم بث التحدي في {sent_count} مجموعة!", show_alert=True)
+    try: await c.message.delete()
+    except: pass
 
-    # 3. انتظار دقيقة لتجميع المشاركين
+    # 4. انتظار دقيقة لتجميع المشاركين
     await asyncio.sleep(60)
     
-    # 4. الانطلاق للعد التنازلي
+    # 5. الانطلاق للعد التنازلي
     await launch_global_countdown(quiz_id, q)
 
 async def launch_global_countdown(quiz_id, q_data):
-    """محرك العد التنازلي المتزامن بالإيموجي قبل انطلاق الأسئلة"""
+    """محرك العد التنازلي المتزامن بالإيموجي"""
+    # جلب المجموعات التي ضغطت "قبول التحدي"
     participants = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz_id).execute()
     
-    if not participants.data:
+    if not participants.data or len(participants.data) == 0:
+        # إذا لم يشارك أحد، نرسل إشعار للمنظم (اختياري)
         return 
 
     timer_icons = ["🔟", "9️⃣", "8️⃣", "7️⃣", "6️⃣", "5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣", "🚀"]
@@ -360,16 +366,18 @@ async def launch_global_countdown(quiz_id, q_data):
             text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق! أظهروا لنا قوتكم..**"
             tasks.append(bot.send_message(p['chat_id'], text, parse_mode="Markdown"))
         
-        await asyncio.gather(*tasks)
+        # إرسال للكل في نفس اللحظة (تزامن حقيقي)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await asyncio.sleep(1.2)
 
-    # تشغيل محرك الأسئلة لكل المجموعات المشاركة
+    # تشغيل محرك الأسئلة (engine_user_questions)
+    # ملاحظة: نمرر "إذاعة عامة" ليعرف المحرك نوع النطاق
     for p in participants.data:
         asyncio.create_task(engine_user_questions(p['chat_id'], q_data, "إذاعة عامة 🌐"))
 
-    # تنظيف جدول المشاركين المؤقت
+    # تنظيف الجدول المؤقت للمشاركين بعد الانطلاق
     supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
-
 # ==========================================
 # 4. حالات النظام (FSM States)
 # ==========================================
