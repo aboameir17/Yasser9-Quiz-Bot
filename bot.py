@@ -327,17 +327,18 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(welcome_txt, parse_mode="HTML")
     
-
-    # --- [ أمر التفعيل بالقالب الملكي المعتمد ] ---
+# ==========================================
+# 1. أمر طلب التفعيل (يرسل الطلب للمطور للموافقة)
+# ==========================================
 
 @dp.message_handler(lambda m: m.text == "تفعيل", chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
 async def activate_group_hub(message: types.Message):
-    # الحماية: التحقق من أن المرسل أدمن أو المطور
+    # الحماية: التحقق من أن المرسل أدمن في القروب
     user_id = message.from_user.id
     chat_member = await message.chat.get_member(user_id)
     
     if not (chat_member.is_chat_admin() or user_id == ADMIN_ID):
-        return await message.reply("⚠️ عذراً، هذا الأمر مخصص لمشرفي القروب فقط!")
+        return await message.reply("⚠️ عذراً، هذا الأمر مخصص لمشرفي القروب لطلب التفعيل.")
 
     group_id = message.chat.id
     group_name = message.chat.title
@@ -347,40 +348,70 @@ async def activate_group_hub(message: types.Message):
         res = supabase.table("groups_hub").select("*").eq("group_id", group_id).execute()
         
         if res.data:
-            # إذا كان محظوراً نعيد تفعيله، وإذا كان مفعل نعطيه تأكيد
-            if res.data[0]['status'] == 'blocked':
-                supabase.table("groups_hub").update({"status": "active"}).eq("group_id", group_id).execute()
-            else:
+            status = res.data[0]['status']
+            if status == 'active':
                 return await message.reply("🛡️ <b>القروب مفعل مسبقاً وجاهز للعمل!</b>", parse_mode="HTML")
-        else:
-            # 2. تسجيل جديد في الهب الموحد (أول مرة)
-            supabase.table("groups_hub").insert({
-                "group_id": group_id,
-                "group_name": group_name,
-                "status": "active",
-                "is_global": True,  # تفعيل النشر العام تلقائياً للمسابقات الكبرى
-                "group_members_points": {}, # سجل نقاط أعضاء هذا القروب
-                "global_users_points": {},  # سجل النقاط العالمي (عبر كل القروبات)
-                "total_group_score": 0      # إجمالي نقاط القروب للمنافسة
-            }).execute()
+            elif status == 'pending':
+                return await message.reply("⏳ <b>طلبك قيد المراجعة!</b>\nيرجى انتظار موافقة المطور لتفعيل القروب.", parse_mode="HTML")
+            elif status == 'blocked':
+                return await message.reply("🚫 <b>عذراً، هذا القروب محظور من قبل المطور.</b>", parse_mode="HTML")
+        
+        # 2. تسجيل طلب جديد بحالة "pending" (بانتظار موافقتك يا ياسر)
+        supabase.table("groups_hub").insert({
+            "group_id": group_id,
+            "group_name": group_name,
+            "status": "pending",  # هنا القيمة: بانتظار المطور
+            "is_global": True,
+            "group_members_points": {},
+            "global_users_points": {},
+            "total_group_score": 0
+        }).execute()
 
-        # 3. إرسال القالب الذي أعجبك (اللمسة النهائية)
+        # إخطار المشرف بأن الكرة الآن في ملعب المطور
         await message.reply(
-            f"🎉 <b>تم تفعيل القروب بنجاح!</b>\n"
+            f"✅ <b>تم إرسال طلب التفعيل بنجاح!</b>\n"
             f"━━━━━━━━━━━━━━\n"
-            f"📍 اسم القروب: {group_name}\n"
-            f"⚙️ الحالة: متصل (Active)\n"
-            f"🌍 النشر العام: مفعل ✅\n"
+            f"📍 القروب: {group_name}\n"
+            f"⚙️ الحالة: بانتظار موافقة المطور ⏳\n"
             f"━━━━━━━━━━━━━━\n"
-            f"الآن يمكنكم بدء المسابقات وجمع النقاط!", 
+            f"سيتم إشعاركم هنا فور قبول الطلب.", 
             parse_mode="HTML"
         )
+        
+        # إرسال إشعار خاص لك يا ياسر (المطور)
+        await bot.send_message(ADMIN_ID, f"🔔 <b>طلب تفعيل جديد بانتظارك!</b>\n👥 القروب: {group_name}\n🆔 الآيدي: <code>{group_id}</code>\n\nاستخدم لوحة الإدارة للقبول أو الرفض.")
 
     except Exception as e:
         logging.error(f"Activation Error: {e}")
         await message.reply("❌ حدث خطأ تقني، تأكد من إعدادات قاعدة البيانات.")
-        
+
 # ==========================================
+# 2. تعديل أمر "تحكم" لضمان عدم العمل إلا بعد التفعيل
+# ==========================================
+@dp.message_handler(lambda m: m.text == "تحكم")
+async def control_panel(message: types.Message):
+    user_id = message.from_user.id
+    group_id = message.chat.id
+
+    # في المجموعات، نتحقق من حالة التفعيل
+    if message.chat.type != 'private':
+        # إذا لم يكن المطور، نتحقق من حالة القروب
+        if user_id != ADMIN_ID:
+            status = await get_group_status(group_id)
+            if status != "active":
+                return await message.reply("⚠️ <b>هذا القروب غير مفعل.</b>\nيجب أن يوافق المطور على طلب التفعيل أولاً.", parse_mode="HTML")
+            
+            # فحص هل المستخدم مشرف
+            member = await bot.get_chat_member(group_id, user_id)
+            if not (member.is_chat_admin() or member.is_chat_creator()):
+                return await message.reply("⚠️ لوحة التحكم مخصصة للمشرفين فقط.")
+
+    # إذا كان المطور أو قروب مفعل، تظهر اللوحة
+    txt = (f"👋 أهلاً بك في لوحة الإعدادات\n"
+           f"👑 المطور: <b>{OWNER_USERNAME}</b>")
+    
+    await message.answer(txt, reply_markup=get_main_control_kb(user_id), parse_mode="HTML")
+
 # التعديل في السطر 330 (أضفنا close_bot_)
 @dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_', 'back_')), state="*")
 async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
