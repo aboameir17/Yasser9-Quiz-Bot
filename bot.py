@@ -1781,44 +1781,53 @@ def get_main_admin_kb():
     kb.row(InlineKeyboardButton("❌ إغلاق اللوحة", callback_data="botq_close"))
     return kb
 
-# --- 1. معالج الأمر الرئيسي /admin ---
+# --- 1. معالج الأمر الرئيسي /admin (المعدل للنظام الموحد) ---
 @dp.message_handler(commands=['admin'], user_id=ADMIN_ID)
 async def admin_dashboard(message: types.Message):
     try:
-        res = supabase.table("allowed_groups").select("*").execute()
-        active = len([g for g in res.data if g['status'] == 'active'])
-        pending = len([g for g in res.data if g['status'] == 'pending'])
+        # جلب البيانات من الجدول الموحد groups_hub
+        res = supabase.table("groups_hub").select("*").execute()
         
+        # تصنيف المجموعات بناءً على حالتها في الجدول الجديد
+        active = len([g for g in res.data if g['status'] == 'active'])
+        blocked = len([g for g in res.data if g['status'] == 'blocked'])
+        total_global_points = sum([g.get('total_group_score', 0) for g in res.data])
+
         txt = (
             "👑 <b>غرفة العمليات الرئيسية</b>\n"
             "━━━━━━━━━━━━━━\n"
-            f"✅ النشطة: {active} | ⏳ المعلقة: {pending}\n"
+            f"✅ المجموعات النشطة: <b>{active}</b>\n"
+            f"🚫 المجموعات المحظورة: <b>{blocked}</b>\n"
+            f"🏆 إجمالي نقاط الهب: <b>{total_global_points}</b>\n"
             "━━━━━━━━━━━━━━\n"
             "👇 اختر قسماً لإدارته:"
         )
-        # هنا استدعاء اللوحة المحدثة فوراً
+        
         await message.answer(txt, reply_markup=get_main_admin_kb(), parse_mode="HTML")
     except Exception as e:
         logging.error(f"Admin Panel Error: {e}")
+        await message.answer("❌ خطأ في الاتصال بقاعدة البيانات الموحدة.")
 
-# --- 2. معالج العودة للقائمة الرئيسية ---
+# --- 2. معالج العودة للقائمة الرئيسية (المعدل) ---
 @dp.callback_query_handler(lambda c: c.data == "admin_back", user_id=ADMIN_ID, state="*")
 async def admin_back_to_main(c: types.CallbackQuery, state: FSMContext):
     await state.finish()
     try:
-        res = supabase.table("allowed_groups").select("*").execute()
+        # تحديث الإحصائيات عند العودة
+        res = supabase.table("groups_hub").select("*").execute()
         active = len([g for g in res.data if g['status'] == 'active'])
-        pending = len([g for g in res.data if g['status'] == 'pending'])
+        blocked = len([g for g in res.data if g['status'] == 'blocked'])
         
         txt = (
             "👑 <b>غرفة العمليات الرئيسية</b>\n"
             "━━━━━━━━━━━━━━\n"
-            f"✅ النشطة: {active} | ⏳ المعلقة: {pending}\n"
+            f"✅ المجموعات النشطة: <b>{active}</b>\n"
+            f"🚫 المجموعات المحظورة: <b>{blocked}</b>\n"
             "━━━━━━━━━━━━━━"
         )
         await c.message.edit_text(txt, reply_markup=get_main_admin_kb(), parse_mode="HTML")
     except Exception as e:
-        await c.answer("⚠️ حدث خطأ أثناء التحديث")
+        await c.answer("⚠️ حدث خطأ أثناء تحديث البيانات الموحدة")
 
 # --- 3. معالج زر التحديث (Restart) ---
 @dp.callback_query_handler(text="admin_restart_now", user_id=ADMIN_ID)
