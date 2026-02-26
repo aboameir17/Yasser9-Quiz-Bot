@@ -1504,15 +1504,17 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             c.data = f"quiz_settings_{quiz_id}_{user_id}"
             return await handle_secure_actions(c, state)
 
-        # 5️⃣ الحفظ وتشغيل وحذف وإغلاق
+        # 5️⃣ الحفظ وتشغيل وحذف وإغلاق (النسخة المصلحة 2026 🚀)
         elif c.data.startswith('save_quiz_process_'):
-            quiz_id = data_parts[2]
+            # 🛠️ تصحيح الاندكس من 2 إلى 3 لسحب الرقم الحقيقي
+            quiz_id = data_parts[3] 
             await c.answer("✅ تم الحفظ بنجاح!", show_alert=True)
             c.data = f"manage_quiz_{quiz_id}_{user_id}"
             return await handle_secure_actions(c, state)
 
         elif c.data.startswith('close_'):
-            return await c.message.delete()
+            try: return await c.message.delete()
+            except: pass
 
         elif c.data.startswith('confirm_del_'):
             quiz_id = data_parts[2]
@@ -1526,26 +1528,34 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             quiz_id = data_parts[2]
             supabase.table("saved_quizzes").delete().eq("id", quiz_id).execute()
             await c.answer("🗑️ تم الحذف", show_alert=True)
-            return await show_quizzes(c)
+            # إعادة عرض القائمة بعد الحذف
+            c.data = f"show_quizzes_{user_id}"
+            return await handle_secure_actions(c, state)
 
         elif c.data.startswith('run_'):
             quiz_id = data_parts[1]
+            # جلب البيانات لنتأكد هل هي عامة أم خاصة
             res = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
             q_data = res.data
-            if not q_data: return await c.answer("❌ خطأ!")
+            if not q_data: return await c.answer("❌ خطأ في جلب البيانات!")
 
-            if q_data.get('quiz_scope') == "عام":
+            # 🛠️ تصحيح منطق الإذاعة (الاعتماد على is_public)
+            is_broadcast = q_data.get('is_public', False) 
+
+            if is_broadcast is True:
+                await c.answer("🌐 جاري بدء الإذاعة العامة...")
                 await start_broadcast_process(c, quiz_id, user_id)
             else:
-                await c.answer("🚀 انطلقنا!")
+                await c.answer("🚀 انطلقنا داخلياً!")
                 engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
                 await announce_quiz_type(c.message.chat.id, q_data, engine_type)
+                
                 if q_data.get('is_bot_quiz'):
                     asyncio.create_task(engine_bot_questions(c.message.chat.id, q_data, c.from_user.first_name))
                 else:
                     asyncio.create_task(engine_user_questions(c.message.chat.id, q_data, c.from_user.first_name))
             return
-
+            
     except Exception as e:
         logging.error(f"Error: {e}")
         try: await c.answer("🚨 خطأ في اللوحة", show_alert=True)
