@@ -1353,81 +1353,66 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
         import logging
         logging.error(f"Error saving quiz: {e}")
         await message.answer("❌ حدث خطأ أثناء الحفظ! تأكد من إعدادات جدول `saved_quizzes` في سوبابيس.")
-    # --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
+# ==========================================
+# [1] عرض قائمة المسابقات (نسخة ياسر المصفاة)
+# ==========================================
 @dp.message_handler(lambda message: message.text == "مسابقة")
 @dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
 async def show_quizzes(obj):
-    # 1. توحيد البيانات
     is_callback = isinstance(obj, types.CallbackQuery)
-    chat_id = obj.message.chat.id if is_callback else obj.chat.id
     user = obj.from_user
     u_id = str(user.id)
     
-    # 2. شرط التفعيل (يُطبق فقط في المجموعات)
-    # إذا كان chat_id أصغر من 0 يعني نحن في جروب
-    if chat_id < 0:
-        status = await get_group_status(chat_id)
-        # إذا لم يكن الجروب مفعلاً وليس أنت المطور
-        if status != "active" and u_id != str(ADMIN_ID):
-            msg = (
-                "⚠️ **نظام المسابقات غير مفعل في هذه المجموعة**\n\n"
-                "يجب طلب التفعيل من الإدارة أولاً.\n"
-                "أرسل كلمة ( **تفعيل** ) لإرسال طلبك."
-            )
-            if is_callback: return await obj.message.edit_text(msg, parse_mode="Markdown")
-            return await obj.reply(msg, parse_mode="Markdown")
-
-    # 3. جلب المسابقات (مسموح دائماً في الخاص، ومسموح في القروبات المفعلة)
+    # جلب المسابقات الخاصة بالمستخدم فقط من سوبابيس
     res = supabase.table("saved_quizzes").select("*").eq("created_by", u_id).execute()
     kb = InlineKeyboardMarkup(row_width=1)
     
     if not res.data:
-        msg_empty = f"⚠️ **يا {user.first_name}، لا توجد لديك مسابقات محفوظة باسمك.**"
+        msg_empty = f"⚠️ **يا {user.first_name}، لا توجد لديك مسابقات محفوظة.**"
         if is_callback: return await obj.message.edit_text(msg_empty)
         return await obj.answer(msg_empty)
 
-    # 4. بناء القائمة (الأسماء فقط)
+    # بناء قائمة المسابقات
     for q in res.data:
         kb.add(InlineKeyboardButton(
-            f"🏆 مسابقة: {q['quiz_name']}", 
+            f"🏆 {q['quiz_name']}", 
             callback_data=f"manage_quiz_{q['id']}_{u_id}"
         ))
     
-    kb.add(InlineKeyboardButton("❌ إغلاق النافذة", callback_data=f"close_{u_id}"))
+    kb.add(InlineKeyboardButton("❌ إغلاق", callback_data=f"close_{u_id}"))
     
-    title = f"🎁 **قائمة مسابقاتك يا {user.first_name}:**"
+    title = f"🎁 مسابقاتك الجاهزة يا {user.first_name}:"
 
     if is_callback:
         await obj.message.edit_text(title, reply_markup=kb, parse_mode="Markdown")
     else:
         await obj.reply(title, reply_markup=kb, parse_mode="Markdown")
-        
-# ==========================================
-# [2] المحرك الأمني ولوحة التحكم (نسخة التشطيب النهائي - ياسر)
-# ==========================================
-@dp.callback_query_handler(lambda c: c.data.startswith(('run_', 'close_', 'confirm_del_', 'final_del_', 'edit_time_', 'set_t_', 'manage_quiz_', 'quiz_settings_', 'edit_count_', 'set_c_', 'toggle_speed_', 'toggle_scope_', 'toggle_hint_', 'save_quiz_process')), state="*")
-async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
-    try:
-        data_parts = c.data.split('_')
-        owner_id = data_parts[-1]
-        user_id = str(c.from_user.id)
-        
-        # الدرع الأمني
-        if user_id != owner_id:
-            await c.answer("🚫 هذه النافذة ليست لك.", show_alert=True)
-            return
 
-        # 1️⃣ شاشة الإدارة الرئيسية
-        if c.data.startswith('manage_quiz_'):
-            quiz_id = data_parts[2]
-            res = supabase.table("saved_quizzes").select("quiz_name").eq("id", quiz_id).single().execute()
-            kb = InlineKeyboardMarkup(row_width=1).add(
-                InlineKeyboardButton("🚀 بدء المسابقة", callback_data=f"run_{quiz_id}_{user_id}"),
-                InlineKeyboardButton("⚙️ إعدادات المسابقة", callback_data=f"quiz_settings_{quiz_id}_{user_id}"),
-                InlineKeyboardButton("🔙 رجوع للقائمة", callback_data=f"list_my_quizzes_{user_id}")
-            )
-            await c.message.edit_text(f"💎 **إدارة مسابقة: {res.data['quiz_name']}**", reply_markup=kb)
-            return
+# ==========================================
+# [2] المحرك الأمني ولوحة التحكم (التشطيب النهائي)
+# ==========================================
+@dp.callback_query_handler(lambda c: c.data.startswith(('run_', 'close_', 'confirm_del_', 'final_del_', 'edit_time_', 'manage_quiz_', 'quiz_settings_', 'set_c_', 'toggle_speed_', 'toggle_scope_', 'toggle_hint_', 'save_quiz_process_')), state="*")
+async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
+    data_parts = c.data.split('_')
+    owner_id = data_parts[-1]
+    user_id = str(c.from_user.id)
+    
+    # الدرع الأمني (لمنع التلاعب بالأزرار)
+    if user_id != owner_id:
+        return await c.answer("🚫 هذه اللوحة ليست لك.", show_alert=True)
+
+    # 1️⃣ شاشة الإدارة الرئيسية للمسابقة
+    if c.data.startswith('manage_quiz_'):
+        quiz_id = data_parts[2]
+        res = supabase.table("saved_quizzes").select("quiz_name").eq("id", quiz_id).single().execute()
+        
+        kb = InlineKeyboardMarkup(row_width=1).add(
+            InlineKeyboardButton("🚀 بدء الانطلاق", callback_data=f"run_{quiz_id}_{user_id}"),
+            InlineKeyboardButton("⚙️ الإعدادات", callback_data=f"quiz_settings_{quiz_id}_{user_id}"),
+            InlineKeyboardButton("🔙 رجوع", callback_data=f"list_my_quizzes_{user_id}")
+        )
+        await c.message.edit_text(f"💎 إدارة: {res.data['quiz_name']}", reply_markup=kb)
+        return
 
         # 2️⃣ لوحة الإعدادات (قالب التشطيب النهائي - كما أرسلته)
         if c.data.startswith('quiz_settings_'):
