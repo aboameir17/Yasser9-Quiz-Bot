@@ -1301,7 +1301,6 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
             )
         )
 
-# --- 7. الحفظ النهائي (مع حفظ حالة الإذاعة) ---
 @dp.message_handler(state=Form.waiting_for_quiz_name)
 async def process_quiz_name_final(message: types.Message, state: FSMContext):
     quiz_name = message.text.strip()
@@ -1311,6 +1310,7 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
     clean_list = [str(c) for c in selected_cats] 
     u_id = str(message.from_user.id)
 
+    # تجهيز البيانات بناءً على الأعمدة الفعلية في جدولك (CSV)
     payload = {
         "created_by": u_id,
         "quiz_name": quiz_name,
@@ -1320,39 +1320,39 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
         "hint_enabled": bool(data.get('quiz_hint_bool', False)),
         "smart_hint": bool(data.get('quiz_smart_bool', False)),
-        "is_broadcast": bool(data.get('is_broadcast', False)), # حفظ النطاق هنا
-        "cats": clean_list,
-        "is_public": True 
+        "is_bot_quiz": bool(data.get('is_bot_quiz', False)), # عمود موجود في جدولك
+        "cats": json.dumps(clean_list), # سوبابيس يفضل JSON للنصوص المصفوفة
+        "is_public": bool(data.get('is_broadcast', False)) # استخدمنا is_public بدلاً من is_broadcast
     }
 
     try:
-        # تنفيذ الحفظ في سوبابيس
+        # تنفيذ الحفظ
         supabase.table("saved_quizzes").insert(payload).execute()
         
-        # تحديد شكل النطاق للعرض في الرسالة
-        broadcast_val = data.get('is_broadcast', False)
-        scope_emoji = "🌐" if broadcast_val else "📍"
-        scope_text = "إذاعة عامة (لكل القروبات)" if broadcast_val else "مسابقة داخلية (لهذا القروب فقط)"
+        # تنسيق رسالة النجاح
+        is_pub = payload["is_public"]
+        scope_emoji = "🌐" if is_pub else "📍"
+        scope_text = "إذاعة عامة" if is_pub else "مسابقة داخلية"
         
-        # رسالة النجاح الملكية
         success_msg = (
-            f"✅ تم حفظ المسابقة بنجاح!\n"
+            f"✅ **تم حفظ المسابقة بنجاح!**\n"
             f"━━━━━━━━━━━━━━\n"
             f"🏷 الاسم: `{quiz_name}`\n"
             f"⏱ الوقت: `{payload['time_limit']} ثانية`\n"
             f"📊 الأقسام: `{len(selected_cats)}` قسم\n"
             f"{scope_emoji} النطاق: **{scope_text}**\n"
             f"━━━━━━━━━━━━━━\n\n"
-            f"🚀 ستجدها الآن في 'قائمة مسابقاتك'.. اكتب كلمة مسابقة لرؤية مسابقاتك والبدء فوراً!"
+            f"🚀 ستجدها الآن في 'قائمة مسابقاتك'!"
         )
         
         await message.answer(success_msg, parse_mode="Markdown")
-        await state.finish()  # تنظيف الحالة بنجاح
+        await state.finish()
 
     except Exception as e:
         import logging
         logging.error(f"Error saving quiz: {e}")
-        await message.answer("❌ حدث خطأ أثناء الحفظ! تأكد من إعدادات جدول `saved_quizzes` في سوبابيس.")
+        # هنا البوت بيعلمك لو فيه عمود ثاني ناقص
+        await message.answer(f"❌ خطأ في قاعدة البيانات:\n`{str(e)}`", parse_mode="Markdown")
 # ==========================================
 # [1] عرض قائمة المسابقات (نسخة ياسر المصفاة)
 # ==========================================
