@@ -1532,42 +1532,44 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             c.data = f"show_quizzes_{user_id}"
             return await handle_secure_actions(c, state)
 
+       # --- [ نظام تشغيل المسابقات: عامة أو خاصة ] ---
         elif c.data.startswith('run_'):
             quiz_id = data_parts[1]
             user_id = data_parts[2]
             
-            # 1. جلب بيانات المسابقة
+            # 1. جلب بيانات المسابقة لمرة واحدة فقط
             res = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
             q_data = res.data
-            if not q_data: return await c.answer("❌ المسابقة غير موجودة!")
+            
+            if not q_data: 
+                return await c.answer("❌ المسابقة غير موجودة!")
 
-            # 2. فحص هل هي إذاعة عامة؟
-            is_broadcast = q_data.get('is_public', False)
-
-            if is_broadcast:
-                # إذا كانت عامة، نرسل الإعلان للمجموعات وننتظر الانضمام
-                await c.answer("🌐 جاري إطلاق الإذاعة العامة...")
+            # 2. التحقق: هل هي إذاعة عامة (بث) أم تشغيل خاص؟
+            if q_data.get('is_public'):
+                # 🌐 مسار الإذاعة العامة
+                await c.answer("🌐 جاري إطلاق الإذاعة العامة للمجموعات...")
                 await start_broadcast_process(c, quiz_id, user_id)
             else:
-                # إذا كانت خاصة، نشغل "المحرك الشغال" فوراً في نفس الشات
+                # 📍 مسار التشغيل الخاص (في نفس الشات)
                 await c.answer("🚀 انطلقنا!")
+                
+                # اختيار المحرك المناسب بناءً على نوع المسابقة
                 if q_data.get('is_bot_quiz'):
-                    # استدعاء محرك البوت (النسخة العشوائية الشغالة)
+                    # استدعاء المحرك الشغال (نظام البوت)
                     asyncio.create_task(engine_bot_questions(c.message.chat.id, q_data, c.from_user.first_name))
                 else:
-                    # استدعاء محرك الأعضاء
+                    # استدعاء محرك أسئلة الأعضاء
                     asyncio.create_task(engine_user_questions(c.message.chat.id, q_data, c.from_user.first_name))
-            return
-                if q_data.get('is_bot_quiz'):
-                    asyncio.create_task(engine_bot_questions(c.message.chat.id, q_data, c.from_user.first_name))
-                else:
-                    asyncio.create_task(engine_user_questions(c.message.chat.id, q_data, c.from_user.first_name))
-            return
             
+            return # إنهاء المعالج بنجاح
+
     except Exception as e:
-        logging.error(f"Error: {e}")
-        try: await c.answer("🚨 خطأ في اللوحة", show_alert=True)
-        except: pass
+        # 🛡️ معالج الأخطاء العام للوحة
+        logging.error(f"Handle Secure Actions Error: {e}")
+        try: 
+            await c.answer("🚨 خطأ في اللوحة أو البيانات", show_alert=True)
+        except: 
+            pass
 # ==========================================
 # 3. نظام المحركات المنفصلة (ياسر المطور - نسخة عشوائية)
 # ==========================================
