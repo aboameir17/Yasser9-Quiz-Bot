@@ -1257,24 +1257,34 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
     }
 
     try:
+        # تنفيذ الحفظ في سوبابيس
         supabase.table("saved_quizzes").insert(payload).execute()
         
-        broadcast_status = "🌐 إذاعة عامة" if data.get('is_broadcast') else "📍 داخلية"
-        await message.answer(
-            f"✅ **تم الحفظ والتشغيل!**\n\n"
-            f"📝 المسابقة: **{quiz_name}**\n"
-            f"📡 النطاق: **{broadcast_status}**\n"
-            f"🚀 الآن سيبدأ المحرك بالإرسال حسب اختيارك."
+        # تحديد شكل النطاق للعرض في الرسالة
+        broadcast_val = data.get('is_broadcast', False)
+        scope_emoji = "🌐" if broadcast_val else "📍"
+        scope_text = "إذاعة عامة (لكل القروبات)" if broadcast_val else "مسابقة داخلية (لهذا القروب فقط)"
+        
+        # رسالة النجاح الملكية
+        success_msg = (
+            f"✅ تم حفظ المسابقة بنجاح!\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"🏷 الاسم: `{quiz_name}`\n"
+            f"⏱ الوقت: `{payload['time_limit']} ثانية`\n"
+            f"📊 الأقسام: `{len(selected_cats)}` قسم\n"
+            f"{scope_emoji} النطاق: **{scope_text}**\n"
+            f"━━━━━━━━━━━━━━\n\n"
+            f"🚀 ستجدها الآن في 'قائمة مسابقاتك'.. اكتب كلمة مسابقة لرؤية مسابقاتك والبدء فوراً!"
         )
-        await state.finish()
         
-        # هنا تستدعي دالة تشغيل الأسئلة (المحرك)
-        # await run_quiz_broadcast(payload)
-        
+        await message.answer(success_msg, parse_mode="Markdown")
+        await state.finish()  # تنظيف الحالة بنجاح
+
     except Exception as e:
-        await message.answer(f"❌ خطأ في الحفظ: `{str(e)[:50]}`")
- 
-# --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
+        import logging
+        logging.error(f"Error saving quiz: {e}")
+        await message.answer("❌ حدث خطأ أثناء الحفظ! تأكد من إعدادات جدول `saved_quizzes` في سوبابيس.")
+    # --- عرض القائمة (نسخة ياسر: خاص مفتوح / قروبات مشروطة) ---
 @dp.message_handler(lambda message: message.text == "مسابقة")
 @dp.callback_query_handler(lambda c: c.data.startswith('list_my_quizzes_'), state="*")
 async def show_quizzes(obj):
