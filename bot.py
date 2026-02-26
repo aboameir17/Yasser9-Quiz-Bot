@@ -295,7 +295,6 @@ async def render_final_settings_panel(message, data, owner_id):
 async def get_group_status(chat_id):
     """فحص حالة تفعيل المجموعة في الجدول الموحد الجديد groups_hub"""
     try:
-        # البحث في الجدول الموحد بدلاً من allowed_groups
         res = supabase.table("groups_hub").select("status").eq("group_id", chat_id).execute()
         return res.data[0]['status'] if res.data else "not_found"
     except Exception as e:
@@ -303,7 +302,8 @@ async def get_group_status(chat_id):
         return "error"
 
 # ==========================================
-
+# 4. حالات النظام (FSM States)
+# ==========================================
 class Form(StatesGroup):
     waiting_for_cat_name = State()
     waiting_for_question = State()
@@ -312,28 +312,54 @@ class Form(StatesGroup):
     waiting_for_new_cat_name = State()
     waiting_for_quiz_name = State()
 
-# --- 1. الأوامر الأساسية ونظام التفعيل الاحترافي ---
-
-@dp.message_handler(commands=['start'])
-async def start_cmd(message: types.Message):
-    user_mention = message.from_user.mention
-    welcome_txt = (
-        f"مرحباً بك {user_mention} في Questions Bot 🤖\n\n"
-        f"نظام المسابقات الموحد والمنافسة الكبرى بين المجموعات.\n\n"
-        f"🔹 <b>لتفعيل البوت:</b> أرسل كلمة (تفعيل) داخل القروب\n"
-        f"🔹 <b>للإعدادات:</b> أرسل (تحكم)\n"
-        f"🔹 <b>للمسابقات:</b> أرسل (مسابقة)\n"
-        f"🔹 <b>لملفك الشخصي:</b> أرسل (عني)"
-    )
-    await message.answer(welcome_txt, parse_mode="HTML")
-    
 # ==========================================
-# 1. أمر طلب التفعيل (يرسل الطلب للمطور للموافقة)
+# 5. الترحيب التلقائي بصورة البوت
 # ==========================================
+@dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
+async def welcome_bot_to_group(message: types.Message):
+    for member in message.new_chat_members:
+        if member.id == (await bot.get_me()).id:
+            group_name = message.chat.title
+            
+            kb_welcome = InlineKeyboardMarkup(row_width=1)
+            kb_welcome.add(
+                InlineKeyboardButton("👑 مبرمج البوت (ياسر)", url="https://t.me/Ya_79k")
+            )
 
+            welcome_text = (
+                f"👋 <b>أهلاً بكم في عالم المسابقات!</b>\n"
+                f"تمت إضافتي بنجاح في: <b>{group_name}</b>\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"🤖 <b>أنا بوت المسابقات الذكي (Questions Bot).</b>\n\n"
+                f"🛠️ <b>كيفية البدء:</b>\n"
+                f"يجب على المشرف كتابة أمر (تفعيل) لإرسال طلب للمطور.\n\n"
+                f"📜 <b>الأوامر الأساسية:</b>\n"
+                f"🔹 <b>تفعيل :</b> لطلب تشغيل البوت.\n"
+                f"🔹 <b>تحكم :</b> لوحة الإعدادات (للمشرفين).\n"
+                f"🔹 <b>مسابقة :</b> لبدء جولة أسئلة.\n"
+                f"🔹 <b>عني :</b> لعرض ملفك الشخصي ونقاطك.\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"📢 <i>اكتب (تفعيل) الآن لنبدأ الرحلة!</i>"
+            )
+
+            try:
+                # ضع الـ File ID الذي حصلت عليه من @FileIdBot هنا
+                bot_photo_id = "AgACAgQAAxkBAA..." # استبدل هذا بالكود الذي سيعطيك إياه البوت
+                await message.answer_photo(
+                    photo=bot_photo_id, 
+                    caption=welcome_text, 
+                    reply_markup=kb_welcome, 
+                    parse_mode="HTML"
+                )
+            except:
+                # في حال لم تضع الآيدي بعد أو حدث خطأ، يرسل نصاً فقط
+                await message.answer(welcome_text, reply_markup=kb_welcome, parse_mode="HTML")
+
+# ==========================================
+# 6. أمر التفعيل (Request Activation)
+# ==========================================
 @dp.message_handler(lambda m: m.text == "تفعيل", chat_type=[types.ChatType.GROUP, types.ChatType.SUPERGROUP])
 async def activate_group_hub(message: types.Message):
-    # الحماية: التحقق من أن المرسل أدمن في القروب
     user_id = message.from_user.id
     chat_member = await message.chat.get_member(user_id)
     
@@ -344,7 +370,6 @@ async def activate_group_hub(message: types.Message):
     group_name = message.chat.title
 
     try:
-        # 1. فحص وجود القروب في الجدول الموحد groups_hub
         res = supabase.table("groups_hub").select("*").eq("group_id", group_id).execute()
         
         if res.data:
@@ -352,38 +377,42 @@ async def activate_group_hub(message: types.Message):
             if status == 'active':
                 return await message.reply("🛡️ <b>القروب مفعل مسبقاً وجاهز للعمل!</b>", parse_mode="HTML")
             elif status == 'pending':
-                return await message.reply("⏳ <b>طلبك قيد المراجعة!</b>\nيرجى انتظار موافقة المطور لتفعيل القروب.", parse_mode="HTML")
+                return await message.reply("⏳ <b>طلبكم قيد المراجعة حالياً!</b>\nيرجى انتظار موافقة المطور.", parse_mode="HTML")
             elif status == 'blocked':
-                return await message.reply("🚫 <b>عذراً، هذا القروب محظور من قبل المطور.</b>", parse_mode="HTML")
+                return await message.reply("🚫 <b>هذا القروب محظور من قبل المطور.</b>", parse_mode="HTML")
         
-        # 2. تسجيل طلب جديد بحالة "pending" (بانتظار موافقتك يا ياسر)
         supabase.table("groups_hub").insert({
-            "group_id": group_id,
-            "group_name": group_name,
-            "status": "pending",  # هنا القيمة: بانتظار المطور
-            "is_global": True,
-            "group_members_points": {},
-            "global_users_points": {},
-            "total_group_score": 0
+            "group_id": group_id, "group_name": group_name, "status": "pending",
+            "is_global": True, "group_members_points": {}, "global_users_points": {}, "total_group_score": 0
         }).execute()
 
-        # إخطار المشرف بأن الكرة الآن في ملعب المطور
+        kb_dev = InlineKeyboardMarkup().add(InlineKeyboardButton("👑 تواصل مع المطور", url="https://t.me/Ya_79k"))
         await message.reply(
             f"✅ <b>تم إرسال طلب التفعيل بنجاح!</b>\n"
             f"━━━━━━━━━━━━━━\n"
-            f"📍 القروب: {group_name}\n"
             f"⚙️ الحالة: بانتظار موافقة المطور ⏳\n"
             f"━━━━━━━━━━━━━━\n"
-            f"سيتم إشعاركم هنا فور قبول الطلب.", 
+            f"سيتم إشعاركم هنا فور القبول.", 
+            reply_markup=kb_dev, 
             parse_mode="HTML"
         )
         
-        # إرسال إشعار خاص لك يا ياسر (المطور)
-        await bot.send_message(ADMIN_ID, f"🔔 <b>طلب تفعيل جديد بانتظارك!</b>\n👥 القروب: {group_name}\n🆔 الآيدي: <code>{group_id}</code>\n\nاستخدم لوحة الإدارة للقبول أو الرفض.")
+        kb_fast_action = InlineKeyboardMarkup(row_width=2).add(
+            InlineKeyboardButton("✅ موافقة", callback_data=f"auth_approve_{group_id}"),
+            InlineKeyboardButton("🚫 رفض وحظر", callback_data=f"auth_block_{group_id}")
+        )
+        await bot.send_message(ADMIN_ID, 
+            f"🔔 <b>طلب تفعيل جديد بانتظارك!</b>\n"
+            f"━━━━━━━━━━━━━━\n"
+            f"👥 القروب: <b>{group_name}</b>\n"
+            f"🆔 الآيدي: <code>{group_id}</code>\n"
+            f"اتخذ قرارك الآن:", 
+            reply_markup=kb_fast_action, 
+            parse_mode="HTML")
 
     except Exception as e:
         logging.error(f"Activation Error: {e}")
-        await message.reply("❌ حدث خطأ تقني، تأكد من إعدادات قاعدة البيانات.")
+        await message.reply("❌ حدث خطأ تقني في قاعدة البيانات.")
 
 # ==========================================
 # 2. تعديل أمر "تحكم" لضمان عدم العمل إلا بعد التفعيل
@@ -2099,46 +2128,38 @@ async def group_control_options(c: types.CallbackQuery):
     kb.add(InlineKeyboardButton("⬅️ رجوع للقائمة", callback_data="admin_view_pending"))
     await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
 
-# 3. معالج العمليات (الموافقة النهائية + إرسال الدليل الملكي للقروب)
+# ==========================================
+# 7. معالج العمليات (Admin Callbacks)
+# ==========================================
 @dp.callback_query_handler(lambda c: c.data.startswith(('auth_approve_', 'auth_block_')), user_id=ADMIN_ID)
 async def process_auth_callback(c: types.CallbackQuery):
     action = c.data.split('_')[1]
     target_id = c.data.split('_')[2]
     
     if action == "approve":
-        # تحديث الحالة في قاعدة البيانات
         supabase.table("groups_hub").update({"status": "active"}).eq("group_id", target_id).execute()
-        
-        # جلب اسم القروب لعرضه في الترحيب
-        res_n = supabase.table("groups_hub").select("group_name").eq("group_id", target_id).execute()
-        g_name = res_n.data[0]['group_name'] if res_n.data else "القروب"
-        
         await c.answer("تم تفعيل المجموعة بنجاح! ✅", show_alert=True)
         
-        # إرسال القالب الملكي التعليمي للقروب
         try:
             full_template = (
                 f"🎉 <b>تم تفعيل القروب بنجاح!</b>\n"
                 f"━━━━━━━━━━━━━━\n"
-                f"📍 اسم القروب: <b>{g_name}</b>\n"
                 f"⚙️ الحالة: متصل (Active) ✅\n"
-                f"🌍 النشر العام: مفعل ✅\n"
                 f"━━━━━━━━━━━━━━\n\n"
-                f"🚀 <b>دليلك السريع للبدء:</b>\n\n"
-                f"🔹 <b>تحكم :</b> لفتح لوحة الإعدادات (للمشرفين) ⚙️\n"
-                f"🔹 <b>مسابقة :</b> لبدء جولة أسئلة جديدة في القروب 📝\n"
-                f"🔹 <b>عني :</b> لعرض بطاقتك الشخصية ونقاطك 👤\n"
-                f"🔹 <b>القروبات :</b> ترتيب أقوى مجموعات البوت 🌍\n\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"الآن يمكنكم بدء المسابقات وجمع النقاط! ✨"
+                f"🚀 <b>دليلك السريع للبدء:</b>\n"
+                f"🔹 <b>تحكم :</b> لوحة الإعدادات ⚙️\n"
+                f"🔹 <b>مسابقة :</b> لبدء التنافس 📝\n"
+                f"🔹 <b>عني :</b> ملفك الشخصي ونقاطك 👤\n"
+                f"🔹 <b>القروبات :</b> الترتيب العالمي 🌍\n\n"
+                f"━━━━━━━━━━━━━━"
             )
             await bot.send_message(target_id, full_template, parse_mode="HTML")
-        except Exception as e:
-            logging.error(f"Error sending activation template: {e}")
-
+        except: pass
     elif action == "block":
         supabase.table("groups_hub").update({"status": "blocked"}).eq("group_id", target_id).execute()
-        await c.answer("تم الحظر / الرفض ❌", show_alert=True)
+        await c.answer("تم الحظر بنجاح ❌", show_alert=True)
+    
+    await c.message.delete()
     
     # تحديث القائمة أمام المطور فوراً
     await admin_manage_groups(c)
