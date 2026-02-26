@@ -1169,16 +1169,21 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
     if action in ['tog', 'cyc', 'set']:
         await c.answer()
         
-        # محرك التلميح الموحد (يا شغال الكل يا طافي الكل)
-        if action == 'cyc' and data_parts[1] == 'hint':
+        # --- [جديد] محرك النطاق (إذاعة عامة / خاصة) ---
+        if action == 'tog' and data_parts[1] == 'broad':
+            current_broad = data.get('is_broadcast', False)
+            new_status = not current_broad
+            await state.update_data(is_broadcast=new_status)
+            status_txt = "🌐 تم تفعيل الإذاعة العامة" if new_status else "📍 تم تحديد المسابقة داخلية"
+            await c.answer(status_txt)
+
+        # محرك التلميح الموحد
+        elif action == 'cyc' and data_parts[1] == 'hint':
             is_currently_on = data.get('quiz_hint_bool', False)
-            
             if not is_currently_on:
-                # إذا كان طافي -> شغله وفعل الحالتين (عادي وذكي) معاً
                 await state.update_data(quiz_hint_bool=True, quiz_smart_bool=True)
-                await c.answer("✅ تم تفعيل التلميحات ")
+                await c.answer("✅ تم تفعيل التلميحات")
             else:
-                # إذا كان شغال -> طفي كل شيء
                 await state.update_data(quiz_hint_bool=False, quiz_smart_bool=False)
                 await c.answer("❌ تم إيقاف التلميحات")
         
@@ -1198,67 +1203,74 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
         elif action == 'set' and data_parts[1] == 'cnt':
             await state.update_data(quiz_count=int(data_parts[2]))
 
-        # تحديث اللوحة فوراً
+        # تحديث اللوحة فوراً بعد أي تغيير
         new_data = await state.get_data()
         return await render_final_settings_panel(c.message, new_data, owner_id)
 
-    # 2️⃣ --- قسم بدء الحفظ (عند ضغط زر حفظ وبدء) ---
+    # 2️⃣ --- قسم بدء الحفظ والتشغيل ---
     elif action == 'start' and data_parts[1] == 'quiz':
         if not data.get('selected_cats'):
             return await c.answer("⚠️ اختر قسماً واحداً على الأقل!", show_alert=True)
         
-        await c.answer("📝 جاري التحضير...")
-        # تفعيل حالة انتظار الاسم
-        await Form.waiting_for_quiz_name.set() 
+        # فحص النطاق قبل البدء
+        is_broadcast = data.get('is_broadcast', False)
         
+        if is_broadcast:
+            # إذا كانت عامة، نتأكد أن القروبات المفعلة متوفرة
+            res = supabase.table("groups_hub").select("group_id").eq("status", "active").execute()
+            if not res.data:
+                return await c.answer("❌ لا توجد قروبات مفعلة حالياً للإذاعة العامة!", show_alert=True)
+            await c.answer(f"🌐 سيتم البث في {len(res.data)} قروب!", show_alert=True)
+        else:
+            await c.answer("📍 مسابقة داخلية لهذا القروب.")
+
+        await Form.waiting_for_quiz_name.set() 
         return await c.message.edit_text(
-            "📝 يا بطل، أرسل الآن اسماً لمسابقتك:\n\n*(سيتم حفظ التلميحات والإعدادات تحت هذا الاسم)*",
+            "📝 يا بطل، أرسل الآن اسماً لمسابقتك:\n\n*(سيتم حفظ التلميحات ونطاق الإرسال تحت هذا الاسم)*",
             reply_markup=InlineKeyboardMarkup().add(
                 InlineKeyboardButton("❌ إلغاء", callback_data=f"final_quiz_settings_{owner_id}")
             )
         )
 
-# --- 7. استقبال الاسم والحفظ النهائي (النسخة المريحة للأعصاب) --- #
-
+# --- 7. الحفظ النهائي (مع حفظ حالة الإذاعة) ---
 @dp.message_handler(state=Form.waiting_for_quiz_name)
 async def process_quiz_name_final(message: types.Message, state: FSMContext):
     quiz_name = message.text.strip()
     data = await state.get_data()
     
-    # 1. تجهيز الأقسام كقائمة نصوص نظيفة (بدون json.dumps يدوي)
-    # هذا السطر هو اللي يخليها تنحفظ ["14", "16"]
     selected_cats = data.get('selected_cats', [])
     clean_list = [str(c) for c in selected_cats] 
-
-    # 2. الحصول على آيدي المستخدم لضمان الحفظ الشخصي
     u_id = str(message.from_user.id)
 
-    # 3. بناء الـ Payload (نرسل القائمة مباشرة للمكتبة)
     payload = {
         "created_by": u_id,
         "quiz_name": quiz_name,
-        "chat_id": u_id, # حفظ آيدي الشخص وليس القروب
+        "chat_id": u_id,
         "time_limit": int(data.get('quiz_time', 15)),
         "questions_count": int(data.get('quiz_count', 10)),
         "mode": data.get('quiz_mode', 'السرعة ⚡'),
         "hint_enabled": bool(data.get('quiz_hint_bool', False)),
         "smart_hint": bool(data.get('quiz_smart_bool', False)),
-        "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
-        "cats": clean_list, # مرر القائمة كـ List مباشرة هنا
+        "is_broadcast": bool(data.get('is_broadcast', False)), # حفظ النطاق هنا
+        "cats": clean_list,
         "is_public": True 
     }
 
     try:
-        # تنفيذ الحفظ في سوبابيس
         supabase.table("saved_quizzes").insert(payload).execute()
         
+        broadcast_status = "🌐 إذاعة عامة" if data.get('is_broadcast') else "📍 داخلية"
         await message.answer(
-            f"✅ **تم الحفظ بنجاح يا {message.from_user.first_name}!**\n\n"
+            f"✅ **تم الحفظ والتشغيل!**\n\n"
             f"📝 المسابقة: **{quiz_name}**\n"
-            f"📂 الأقسام: `{clean_list}`\n\n"
-            f"🚀 الآن البيانات في سوبابيس نظيفة 100%."
+            f"📡 النطاق: **{broadcast_status}**\n"
+            f"🚀 الآن سيبدأ المحرك بالإرسال حسب اختيارك."
         )
         await state.finish()
+        
+        # هنا تستدعي دالة تشغيل الأسئلة (المحرك)
+        # await run_quiz_broadcast(payload)
+        
     except Exception as e:
         await message.answer(f"❌ خطأ في الحفظ: `{str(e)[:50]}`")
  
