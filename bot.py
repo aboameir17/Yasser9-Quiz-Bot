@@ -1861,13 +1861,24 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
         else:
             # انتظار هادئ بعد آخر سؤال
             await asyncio.sleep(2)
-    # 7. إعلان لوحة الشرف النهائية
-    await send_final_results(chat_id, overall_scores, len(questions))
-
-# ==========================================
-    # 6. إعلان لوحة الشرف النهائية لكل مجموعة
+    # تأكد أن هذا الجزء خارج حلقة (for i, q in enumerate(questions))
+    
     for cid in chat_ids:
-        asyncio.create_task(send_final_results(cid, group_scores[cid], total_q))
+        # نجلب سكور هذه المجموعة
+        final_group_scores = group_scores.get(cid, {})
+        
+        # استدعاء دالة عرض النتائج (القالب الفخم اللي عدلناه)
+        if final_group_scores:
+            await send_final_results(cid, final_group_scores, total_q)
+        else:
+            try:
+                await bot.send_message(cid, "🏁 **انتهت المسابقة!**\nللأسف لم يتم تسجيل أي نقاط في هذه الجولة. 🌹")
+            except: pass
+
+    # تنظيف الذاكرة بعد الانتهاء
+    for cid in chat_ids:
+        if cid in active_quizzes:
+            del active_quizzes[cid]
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
