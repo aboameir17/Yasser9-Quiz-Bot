@@ -1360,7 +1360,7 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             await c.message.edit_text(f"💎 **إدارة مسابقة: {res.data['quiz_name']}**", reply_markup=kb)
             return
 
-        # 2️⃣ لوحة الإعدادات (قالب التشطيب النهائي)
+        # 2️⃣ لوحة الإعدادات (قالب التشطيب النهائي - كما أرسلته)
         if c.data.startswith('quiz_settings_'):
             quiz_id = data_parts[2]
             res = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
@@ -1373,6 +1373,7 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             q_count = q.get('questions_count', 10)
             q_mode = q.get('mode', 'السرعة ⚡')
             is_hint = q.get('smart_hint', False)
+            # الربط البرمجي للنطاق
             is_public = q.get('quiz_scope') == "عام"
 
             text = (
@@ -1397,9 +1398,10 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
                 InlineKeyboardButton(f"🔖 {q_mode}", callback_data=f"toggle_speed_{quiz_id}_{user_id}"),
                 InlineKeyboardButton(f"💡 {'مفعل ✅' if is_hint else 'معطل ❌'}", callback_data=f"toggle_hint_{quiz_id}_{user_id}")
             )
+            # زر النطاق (عام / داخلي)
             kb.row(InlineKeyboardButton(f"📡 {'نطاق: عام 🌐' if is_public else 'نطاق: داخلي 📍'}", callback_data=f"toggle_scope_{quiz_id}_{user_id}"))
             
-            # زر الحفظ النهائي (المباشر)
+            # زر الحفظ النهائي
             kb.row(InlineKeyboardButton("💾 حفظ التعديلات 🚀", callback_data=f"save_quiz_process_{quiz_id}_{user_id}"))
             kb.row(InlineKeyboardButton("🗑️ حذف المسابقة", callback_data=f"confirm_del_{quiz_id}_{user_id}"))
             kb.row(InlineKeyboardButton("🔙 رجوع للخلف", callback_data=f"manage_quiz_{quiz_id}_{user_id}"))
@@ -1407,14 +1409,13 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             await c.message.edit_text(text, reply_markup=kb)
             return
 
-                # 3️⃣ التبديلات (Toggles) - نسخة مصلحة وآمنة للنطاق
-        if any(c.data.startswith(x) for x in ['toggle_hint_', 'toggle_speed_', 'toggle_scope_', 'set_c_', 'set_t_']):
+        # 3️⃣ التبديلات (Toggles) - المحرك المصلح والمطابق لطلبك
+        if any(c.data.startswith(x) for x in ['toggle_hint_', 'toggle_speed_', 'toggle_scope_', 'set_c_']):
             quiz_id = data_parts[2]
             
-            # محرك النطاق (Scope) المصلح
+            # محرك النطاق (Scope)
             if 'toggle_scope_' in c.data:
                 res = supabase.table("saved_quizzes").select("quiz_scope").eq("id", quiz_id).single().execute()
-                # إذا كان الحقل فارغاً في الداتابيز، نعتبره "خاص" افتراضياً
                 curr_s = res.data.get('quiz_scope', 'خاص') if res.data else 'خاص'
                 new_s = "عام" if curr_s == "خاص" else "خاص"
                 supabase.table("saved_quizzes").update({"quiz_scope": new_s}).eq("id", quiz_id).execute()
@@ -1442,7 +1443,7 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             await c.answer("تم التحديث ✅")
             c.data = f"quiz_settings_{quiz_id}_{user_id}"
             return await handle_secure_actions(c, state)
-
+        
         # 4️⃣ محرك تغيير الوقت (Cycle Time) - نسخة آمنة
         if c.data.startswith('edit_time_'):
             quiz_id = data_parts[2]
