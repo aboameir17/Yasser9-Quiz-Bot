@@ -1816,38 +1816,91 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
         asyncio.create_task(send_final_results(cid, group_scores[cid], len(questions)))
         
 # ==========================================
-# 4. الجزء الثالث: قالب السؤال والتلميح...........     
+# 4. محركات العرض والقوالب (Display Engines)
 # ==========================================
 
+# [1] دالة العد التنازلي بالإيموجي (قبل الانطلاق)
 async def countdown_timer(message: types.Message, seconds=5):
+    """عد تنازلي احترافي بنفس نمط الإذاعة العامة"""
+    timer_icons = {5: "5️⃣", 4: "4️⃣", 3: "3️⃣", 2: "2️⃣", 1: "1️⃣"}
     try:
         for i in range(seconds, 0, -1):
-            await message.edit_text(f"🚀 تجهيز المسابقة...\n\nستبدأ خلال: {i}")
-            await asyncio.sleep(1)
+            icon = timer_icons.get(i, str(i))
+            await message.edit_text(f"🚀 **تجهيز المسابقة...**\n\nستبدأ خلال: {icon}")
+            await asyncio.sleep(1.2)
+        
+        await message.edit_text("🔥 **انطـــلاق! بالتوفيق للجميع..**")
+        await asyncio.sleep(1.5)
     except Exception as e:
         logging.error(f"Countdown Error: {e}")
 
+# [2] دالة إعلان تفاصيل المسابقة (تظهر لـ 3 ثواني)
+async def announce_quiz_type(chat_id, quiz_data, engine_type):
+    """إعلان تفاصيل المسابقة الشاملة قبل البدء بـ 3 ثواني"""
+    source_map = {
+        "bot": "أسئلة البوت الذكية 🤖", 
+        "user": "أسئلة المستخدم الخاصة 👤"
+    }
+    source_text = source_map.get(engine_type, "قاعدة بيانات خاصة 🔒")
+    
+    q_name = quiz_data.get('quiz_name', 'تحدي جديد')
+    q_count = quiz_data.get('questions_count', 10)
+    q_time = quiz_data.get('time_limit', 15)
+    q_mode = quiz_data.get('mode', 'السرعة ⚡')
+    q_scope = "إذاعة عامة 🌐" if quiz_data.get('quiz_scope') == 'عام' else "مسابقة داخلية 📍"
+    
+    announcement = (
+        f"📊 **تفاصيل المسابقة المنطلقة:**\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"🏆 الاسم: **{q_name}**\n"
+        f"📁 المصدر: `{source_text}`\n"
+        f"📡 النطاق: **{q_scope}**\n"
+        f"🔢 عدد الأسئلة: `{q_count}`\n"
+        f"⏳ وقت السؤال: `{q_time} ثانية`\n"
+        f"🔖 النظام: **{q_mode}**\n"
+        f"━━━━━━━━━━━━━━\n\n"
+        f"⏳ **استعدوا.. السؤال الأول سيبدأ خلال 3 ثواني!**"
+    )
+    
+    try:
+        msg = await bot.send_message(chat_id, announcement, parse_mode="Markdown")
+        await asyncio.sleep(3) 
+        await msg.delete() 
+    except Exception as e:
+        logging.error(f"Error in announcement: {e}")
 
+# [3] دالة قالب السؤال (الذي يظهر أثناء المسابقة)
 async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
-    # دعم مسميات CSV الجديدة
-    q_text = q_data.get('question_content') or q_data.get('question_text') or "نص مفقود"
+    """قالب السؤال الموحد المنسق (التنسيق الملكي)"""
+    # تحديد النطاق
+    scope_val = settings.get('scope', 'خاص')
+    q_scope = "إذاعة عامة 🌐" if scope_val == "عام" else "مسابقة داخلية 📍"
+    
+    # تحديد المصدر
+    source = settings.get('source', 'قاعدة البيانات')
+    
+    # جلب نص السؤال
+    q_text = q_data.get('question_content') or q_data.get('question_text') or "⚠️ نص السؤال مفقود!"
     
     text = (
         f"🎓 **الـمنـظـم:** {settings['owner_name']} ☁️\n"
-        f"┏━━━━━━━━━━━━━━┓\n"
-        f"  📌 **سؤال:** « {current_num} » من « {total_num} »\n"
-        f"  📂 **القسم:** {settings['cat_name']}\n"
-        f"  ⏳ **المهلة:** {settings['time_limit']} ثانية\n"
-        f"┗━━━━━━━━━━━━━━┛\n\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"📌 **السؤال:** « {current_num} » من « {total_num} »\n"
+        f"📂 **القسم:** `{settings['cat_name']}`\n"
+        f"🛠 **المصدر:** `{source}`\n"
+        f"📡 **النطاق:** **{q_scope}**\n"
+        f"⏳ **المهلة:** {settings['time_limit']} ثانية\n"
+        f"━━━━━━━━━━━━━━\n\n"
         f"❓ **السؤال:**\n**{q_text}**"
     )
+    
     return await bot.send_message(chat_id, text, parse_mode='Markdown')
 
+# [4] دالة التنظيف (حذف الرسائل)
 async def delete_after(msg, delay):
     await asyncio.sleep(delay)
     try: await msg.delete()
     except: pass
-
 # ==========================================
 # 4. نظام رصد الإجابات الذكي (ياسر المطور)
 # ==========================================
