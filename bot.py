@@ -1702,119 +1702,119 @@ async def delete_after(message, delay):
         await message.delete()
     except Exception: 
         pass
+
 # ==========================================
 # [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
 async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine_type):
-    # إذا كان chat_ids رقم واحد (مسابقة خاصة) نحوله لقائمة ليعمل المحرك
+    """المحرك العالمي المكتمل والشامل - نسخة ياسر 2026 🏆"""
     if not isinstance(chat_ids, list):
         chat_ids = [chat_ids]
 
     random.shuffle(questions)
-    # قاموس لتخزين النقاط لكل مجموعة (عشان ما تختلط النقاط في الإذاعة)
     group_scores = {cid: {} for cid in chat_ids}
+    is_pub = quiz_data.get('is_public', False)
+    total_q = len(questions)
 
     for i, q in enumerate(questions):
-        # 1. استخراج الإجابة والنص حسب نوع المصدر (نفس كودك بالضبط)
+        # 1. تحديد الإجابة والاسم حسب نوع المحرك
         if engine_type == "bot":
             ans = str(q.get('correct_answer') or "").strip()
-            cat_name = q.get('category') or "بوت"
-        elif engine_type == "user":
-            ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
-            cat_name = q['categories']['name'] if q.get('categories') else "عام"
+            cat_name = q.get('category') or "ذكاء اصطناعي 🤖"
         else:
-            ans = str(q.get('correct_answer') or q.get('ans') or "").strip()
-            cat_name = "قسم خاص 🔒"
+            ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
+            cat_info = q.get('categories', {})
+            cat_name = cat_info.get('name', 'عام 📁') if isinstance(cat_info, dict) else "خاص 🔒"
 
-        # 2. تصفير حالة السؤال وتجهيز الذاكرة النشطة لكل المجموعات
+        # 2. تصفير الحالة لكل المجموعات المشاركة وتجهيز الذاكرة
         for cid in chat_ids:
             active_quizzes[cid] = {
                 "active": True, 
                 "ans": ans, 
                 "winners": [], 
-                "mode": quiz_data['mode'], 
-                "hint_sent": False
+                "mode": quiz_data.get('mode', 'السرعة ⚡'), 
+                "hint_sent": False,
+                "start_time": time.time()
             }
             
-            # 3. إرسال قالب السؤال للقروب (استدعاء دالتك)
-            asyncio.create_task(send_quiz_question(cid, q, i+1, len(questions), {
+            # إرسال السؤال لكل مجموعة بشكل متزامن
+            asyncio.create_task(send_quiz_question(cid, q, i+1, total_q, {
                 'owner_name': owner_name, 
-                'mode': quiz_data['mode'], 
-                'time_limit': quiz_data['time_limit'], 
-                'cat_name': cat_name
+                'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+                'time_limit': quiz_data.get('time_limit', 15), 
+                'cat_name': cat_name,
+                'is_public': is_pub,
+                'source': "أسئلة البوت 🤖" if engine_type == "bot" else "مكتبتك الخاصة 👤"
             }))
         
-        # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
+        # 3. محرك الوقت الذكي ومراقبة الإجابات
         start_time = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
         hint_messages = {cid: None for cid in chat_ids} 
         
         while time.time() - start_time < t_limit:
-            # إذا الكل جاوبوا نوقف (في طور السرعة)
-            all_done = all(not active_quizzes[cid]['active'] for cid in chat_ids)
+            # فحص هل انتهت المسابقة في كل المجموعات (في طور السرعة)
+            all_done = all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids)
             if all_done: break
             
-            if quiz_data.get('smart_hint'):
-                if (time.time() - start_time) >= (t_limit / 2):
-                    hint_text = await generate_smart_hint(ans) # دالة التلميح
-                    for cid in chat_ids:
-                        if not active_quizzes[cid]['hint_sent']:
-                            try:
-                                msg = await bot.send_message(cid, hint_text, parse_mode="HTML")
-                                hint_messages[cid] = msg
-                                active_quizzes[cid]['hint_sent'] = True
-                            except: pass
-
+            # منطق التلميح الذكي ✨
+            if quiz_data.get('smart_hint') and (time.time() - start_time) >= (t_limit / 2):
+                hint_text = await generate_smart_hint(ans) 
+                for cid in chat_ids:
+                    if not active_quizzes.get(cid, {}).get('active', False): continue
+                    if not active_quizzes[cid]['hint_sent']:
+                        try:
+                            msg = await bot.send_message(cid, f"💡 تلميح: <code>{hint_text}</code>", parse_mode="HTML")
+                            hint_messages[cid] = msg
+                            active_quizzes[cid]['hint_sent'] = True
+                        except: pass
+            
             await asyncio.sleep(0.5)
 
-        # حذف رسائل التلميح بعد انتهاء الوقت
+        # 4. إنهاء السؤال وحساب النتائج اللحظية
         for cid in chat_ids:
-            if hint_messages[cid]:
+            current_winners = active_quizzes.get(cid, {}).get('winners', [])
+            active_quizzes[cid]['active'] = False # إغلاق السؤال
+            
+            if hint_messages.get(cid):
                 asyncio.create_task(delete_after(hint_messages[cid], 0))
-
-        # 5. إنهاء السؤال وحساب النقاط لكل مجموعة
-        for cid in chat_ids:
-            if cid in active_quizzes:
-                active_quizzes[cid]['active'] = False
-                for w in active_quizzes[cid]['winners']:
-                    uid = w['id']
-                    if uid not in group_scores[cid]: 
-                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                    group_scores[cid][uid]['points'] += 10
+            
+            # حساب وتراكم النقاط (10 نقاط لكل فائز)
+            for w in current_winners:
+                uid = w['id']
+                if uid not in group_scores[cid]: 
+                    group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                group_scores[cid][uid]['points'] += 10
         
-                # 6. عرض لوحة المبدعين اللحظية في كل مجموعة
-                asyncio.create_task(send_creative_results(cid, ans, active_quizzes[cid]['winners'], group_scores[cid]))
+            # إرسال لوحة المبدعين لهذا السؤال (النتائج اللحظية)
+            asyncio.create_task(send_creative_results(cid, ans, current_winners, group_scores[cid]))
         
-        # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
-        if i < len(questions) - 1:
-            icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
+        # 5. فاصل العداد التنازلي الملون 🔴🟠🟢
+        if i < total_q - 1:
             try:
-                # إرسال عداد لكل مجموعة
                 countdown_msgs = []
                 for cid in chat_ids:
                     m = await bot.send_message(cid, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
                     countdown_msgs.append(m)
                 
-                for count in range(4, 0, -2): 
+                # تحديث العداد بتزامن
+                for count, icon in zip([3, 1], ["🟡", "🟢"]): 
                     await asyncio.sleep(2)
-                    icon = icons[count] if count < len(icons) else "⚪"
                     for m in countdown_msgs:
-                        try: await m.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
+                        try: await m.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...", parse_mode="HTML")
                         except: break
                 
-                await asyncio.sleep(1.5)
+                await asyncio.sleep(1)
                 for m in countdown_msgs:
                     try: await m.delete()
                     except: pass
-            except Exception as e:
-                logging.error(f"Countdown Error: {e}")
+            except: pass
         else:
             await asyncio.sleep(2)
 
-    # 7. إعلان لوحة الشرف النهائية لكل مجموعة
+    # 6. إعلان لوحة الشرف النهائية لكل مجموعة
     for cid in chat_ids:
-        asyncio.create_task(send_final_results(cid, group_scores[cid], len(questions)))
-        
+        asyncio.create_task(send_final_results(cid, group_scores[cid], total_q))
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
