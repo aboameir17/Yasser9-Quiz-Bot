@@ -1516,21 +1516,27 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             c.data = f"manage_quiz_{quiz_id}_{user_id}"
             return await handle_secure_actions(c, state)
 
-        # 6️⃣ حذف وإغلاق وتشغيل (نسخة الإصلاح الملكي)
-        if c.data.startswith('confirm_del_'):
+        # 6️⃣ إغلاق وحذف وتشغيل (التنسيق المصلح)
+        elif c.data.startswith('close_'):
+            try:
+                await c.message.delete()
+            except:
+                pass
+            return
+
+        elif c.data.startswith('confirm_del_'):
             quiz_id = data_parts[2]
             kb = InlineKeyboardMarkup().add(
                 InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_{quiz_id}_{user_id}"),
-                InlineKeyboardButton("🚫 تراجع", callback_data=f"quiz_settings_{quiz_id}_{user_id}")
+                InlineKeyboardButton("🚫 تراجع", callback_data=f"manage_quiz_{quiz_id}_{user_id}")
             )
-            await c.message.edit_text("⚠️ **هل أنت متأكد من الحذف؟**", reply_markup=kb)
+            await c.message.edit_text("⚠️ **هل أنت متأكد من حذف هذه المسابقة نهائياً؟**", reply_markup=kb)
             return
 
         elif c.data.startswith('final_del_'):
             quiz_id = data_parts[2]
             supabase.table("saved_quizzes").delete().eq("id", quiz_id).execute()
-            await c.answer("🗑️ تم الحذف")
-            # استدعاء دالة عرض القائمة مجدداً
+            await c.answer("🗑️ تم الحذف بنجاح", show_alert=True)
             await show_quizzes(c)
             return
 
@@ -1540,32 +1546,28 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             q_data = res.data
             
             if not q_data:
-                return await c.answer("❌ تعذر العثور على بيانات المسابقة")
+                return await c.answer("❌ تعذر العثور على المسابقة!")
 
-            # التحقق من النطاق (إذاعة عامة أم داخلية)
+            # التحقق من النطاق (إذاعة أم داخلية)
             if q_data.get('quiz_scope') == "عام":
                 await start_broadcast_process(c, quiz_id, user_id)
             else:
                 await c.answer("🚀 جاري التحضير...")
-                # 1. إظهار الإعلان الملكي
                 engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
+                # إظهار الإعلان الملكي الموحد
                 await announce_quiz_type(c.message.chat.id, q_data, engine_type)
                 
-                # 2. تشغيل المحرك المناسب
+                # تشغيل المحرك المناسب
                 if q_data.get('is_bot_quiz'):
                     asyncio.create_task(engine_bot_questions(c.message.chat.id, q_data, c.from_user.first_name))
                 else:
                     asyncio.create_task(engine_user_questions(c.message.chat.id, q_data, c.from_user.first_name))
             return
 
-        elif c.data.startswith('close_'):
-            await c.message.delete()
-            return
-
     except Exception as e:
         logging.error(f"Error in handle_secure_actions: {e}")
         try:
-            await c.answer("🚨 حدث خطأ غير متوقع")
+            await c.answer("🚨 حدث خطأ غير متوقع في اللوحة", show_alert=True)
         except:
             pass
 # ==========================================
