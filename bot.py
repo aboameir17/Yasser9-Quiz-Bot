@@ -1546,7 +1546,7 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             await c.message.delete()
             return
 
-    except Exception as e:
+     except Exception as e:
         logging.error(f"Error: {e}")
         await c.answer("🚨 حدث خطأ")
         
