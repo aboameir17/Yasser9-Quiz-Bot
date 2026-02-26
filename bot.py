@@ -1534,21 +1534,48 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
 
         elif c.data.startswith('run_'):
             quiz_id = data_parts[1]
-            # جلب البيانات لنتأكد هل هي عامة أم خاصة
+            user_id = data_parts[2]
+            
+            # 1. جلب بيانات المسابقة
             res = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
             q_data = res.data
-            if not q_data: return await c.answer("❌ خطأ في جلب البيانات!")
+            if not q_data: return await c.answer("❌ المسابقة غير موجودة!")
 
-            # 🛠️ تصحيح منطق الإذاعة (الاعتماد على is_public)
-            is_broadcast = q_data.get('is_public', False) 
+            is_bot = q_data.get('is_bot_quiz', False)
+            limit_q = q_data.get('questions_count', 10)
 
-            if is_broadcast is True:
-                await c.answer("🌐 جاري بدء الإذاعة العامة...")
+            if is_bot:
+                # 🤖 مسار نظام البوت الحقيقي (الجدول: bot_questions)
+                # جلب الأسئلة بناءً على القسم المختار
+                cat_name = q_data.get('category_name')
+                
+                # نبحث في جدول bot_questions عن القسم المطابق
+                res_q = supabase.table("bot_questions")\
+                    .select("*")\
+                    .eq("category", cat_name)\
+                    .limit(limit_q)\
+                    .execute()
+                engine_type = "bot"
+            else:
+                # 👤 مسار أسئلة الأعضاء (الجدول: user_questions)
+                res_q = supabase.table("user_questions").select("*").eq("quiz_id", int(quiz_id)).execute()
+                engine_type = "user"
+
+            # 2. التحقق من وجود الأسئلة
+            if not res_q.data or len(res_q.data) == 0:
+                target = "نظام البوت" if is_bot else "أقسام الأعضاء"
+                return await c.answer(f"⚠️ لم أجد أسئلة في {target}! (تأكد من مطابقة اسم القسم)", show_alert=True)
+
+            # 3. الانطلاق (إذاعة أو خاص)
+            questions = res_q.data
+            is_broadcast = q_data.get('is_public', False)
+
+            if is_broadcast:
+                await c.answer("🌐 جاري إطلاق الإذاعة العامة...")
                 await start_broadcast_process(c, quiz_id, user_id)
             else:
-                await c.answer("🚀 انطلقنا داخلياً!")
-                engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
-                await announce_quiz_type(c.message.chat.id, q_data, engine_type)
+                await c.answer("🚀 انطلقنا!")
+                await run_universal_logic([c.message.chat.id], questions, q_data, c.from_user.first_name, engine_type)
                 
                 if q_data.get('is_bot_quiz'):
                     asyncio.create_task(engine_bot_questions(c.message.chat.id, q_data, c.from_user.first_name))
