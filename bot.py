@@ -2308,17 +2308,22 @@ async def process_auth_callback(c: types.CallbackQuery):
 # --- قبول طلبات المشرفين اداعات
 # ==========================================
 
-@dp.callback_query_handler(lambda c: c.data.startswith('accept_q_'))
+@dp.callback_query_handler(lambda c: c.data.startswith('accept_q_'), state="*")
 async def handle_accept_quiz(c: types.CallbackQuery):
-    """تسجيل المجموعة في الإذاعة العامة ومنع التكرار"""
-    data_parts = c.data.split('_')
-    quiz_id = data_parts[2]
-    owner_id = data_parts[3]
-    chat_id = c.message.chat.id
-    group_name = c.message.chat.title or "مجموعة غير معروفة"
-
+    """معالج الانضمام المتوافق مع جدول quiz_participants الحقيقي"""
     try:
-        # 1. التحقق هل المجموعة مسجلة أصلاً في هذه المسابقة؟
+        # 1. تفكيك البيانات من الزر
+        data_parts = c.data.split('_')
+        # الترتيب المتوقع في الزر: accept_q_{quiz_id}_{owner_id}
+        if len(data_parts) < 4:
+            return await c.answer("⚠️ بيانات الانضمام ناقصة!")
+
+        quiz_id = data_parts[2]
+        owner_id = data_parts[3]
+        chat_id = str(c.message.chat.id) # حولناه لنص لأن جدولك يتوقع text
+        group_name = c.message.chat.title or "مجموعة"
+
+        # 2. فحص هل المجموعة انضمت سابقاً
         check = supabase.table("quiz_participants")\
             .select("*")\
             .eq("quiz_id", quiz_id)\
@@ -2326,27 +2331,28 @@ async def handle_accept_quiz(c: types.CallbackQuery):
             .execute()
 
         if check.data and len(check.data) > 0:
-            return await c.answer("⚠️ مجموعتكم مسجلة بالفعل في هذا التحدي! استعدوا..", show_alert=True)
+            return await c.answer("✅ مجموعتكم مسجلة بالفعل في هذا البث!", show_alert=True)
 
-        # 2. تسجيل المجموعة في الجدول
+        # 3. إدراج البيانات (بناءً على أعمدة جدولك: quiz_id, chat_id, owner_id)
         supabase.table("quiz_participants").insert({
-            "quiz_id": quiz_id,
+            "quiz_id": int(quiz_id),
             "chat_id": chat_id,
-            "group_name": group_name
+            "owner_id": str(owner_id)
         }).execute()
 
-        # 3. إشعار بنجاح الانضمام
-        await c.answer("✅ تم قبول التحدي! ستبدأ المسابقة آلياً في مجموعتكم بعد قليل.", show_alert=True)
+        # 4. إشعار النجاح وتحديث الرسالة
+        await c.answer(f"🌟 كفو! تم انضمام {group_name} للتحدي العالمي!", show_alert=True)
         
-        # 4. تحديث رسالة الإذاعة في المجموعة لتأكيد الانضمام
-        new_text = c.message.text + f"\n\n✅ **انضمت المجموعة:** `{group_name}`"
         try:
-            await c.message.edit_text(new_text, parse_mode="Markdown")
-        except: pass
+            current_text = c.message.text
+            new_text = f"{current_text}\n\n✅ انضمت الآن: **{group_name}**"
+            await c.message.edit_text(new_text, reply_markup=c.message.reply_markup, parse_mode="Markdown")
+        except:
+            pass
 
     except Exception as e:
-        logging.error(f"Error in accept quiz: {e}")
-        await c.answer("🚨 حدث خطأ أثناء الانضمام، حاول مجدداً.")
+        logging.error(f"Join Error: {e}")
+        await c.answer(f"🚨 خطأ: {str(e)[:40]}", show_alert=True)
 # ==========================================
 # 5. نهاية الملف: ضمان التشغيل 24/7 (Keep-Alive)
 # ==========================================
