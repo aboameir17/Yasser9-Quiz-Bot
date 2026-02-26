@@ -2001,34 +2001,70 @@ async def process_bulk_questions(message: types.Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-# --- إدارة المجموعات (التفعيل والحظر) ---
+# 1. عرض قائمة المجموعات النشطة لإدارتها
 @dp.callback_query_handler(lambda c: c.data == "admin_view_pending", user_id=ADMIN_ID)
-async def view_pending_groups(c: types.CallbackQuery):
-    res = supabase.table("allowed_groups").select("*").eq("status", "pending").execute()
-    if not res.data:
-        return await c.answer("لا توجد طلبات معلقة.", show_alert=True)
+async def admin_manage_groups(c: types.CallbackQuery):
+    # جلب جميع المجموعات المسجلة في الهب
+    res = supabase.table("groups_hub").select("group_id, group_name, status").execute()
     
-    txt = "⏳ <b>طلبات التفعيل الحالية:</b>"
+    if not res.data:
+        return await c.answer("📭 لا توجد مجموعات مسجلة في النظام بعد.", show_alert=True)
+    
+    txt = "🛠️ <b>إدارة مجموعات الهب الموحد:</b>\n" \
+          "اضغط على اسم المجموعة للتحكم بها (حظر/تفعيل)."
+    
     kb = InlineKeyboardMarkup(row_width=1)
     for g in res.data:
+        status_icon = "✅" if g['status'] == 'active' else "🚫"
         kb.add(
-            InlineKeyboardButton(f"✅ تفعيل: {g['group_name']}", callback_data=f"auth_approve_{g['group_id']}"),
-            InlineKeyboardButton(f"❌ حظر الآيدي: {g['group_id']}", callback_data=f"auth_block_{g['group_id']}")
+            InlineKeyboardButton(
+                f"{status_icon} {g['group_name']}", 
+                callback_data=f"manage_grp_{g['group_id']}"
+            )
         )
-    kb.add(InlineKeyboardButton("⬅️ العودة", callback_data="admin_back"))
+    
+    kb.add(InlineKeyboardButton("⬅️ العودة للقائمة الرئيسية", callback_data="admin_back"))
     await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
 
+
+# 2. لوحة التحكم بمجموعة محددة (تظهر عند الضغط على اسم المجموعة)
+@dp.callback_query_handler(lambda c: c.data.startswith('manage_grp_'), user_id=ADMIN_ID)
+async def group_control_options(c: types.CallbackQuery):
+    g_id = c.data.split('_')[2]
+    
+    # جلب بيانات المجموعة للتأكد من حالتها
+    res = supabase.table("groups_hub").select("group_name, status").eq("group_id", g_id).execute()
+    if not res.data: return await c.answer("⚠️ المجموعة غير موجودة.")
+    
+    g = res.data[0]
+    txt = (f"📍 <b>إدارة المجموعة:</b> {g['group_name']}\n"
+           f"🆔 الآيدي: <code>{g_id}</code>\n"
+           f"⚙️ الحالة الحالية: {'نشطة ✅' if g['status'] == 'active' else 'محظورة 🚫'}")
+
+    kb = InlineKeyboardMarkup(row_width=2)
+    if g['status'] == 'active':
+        kb.add(InlineKeyboardButton("🚫 حظر المجموعة", callback_data=f"auth_block_{g_id}"))
+    else:
+        kb.add(InlineKeyboardButton("✅ تفعيل المجموعة", callback_data=f"auth_approve_{g_id}"))
+    
+    kb.add(InlineKeyboardButton("⬅️ رجوع للقائمة", callback_data="admin_view_pending"))
+    await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
+
+# 3. تنفيذ عمليات الحظر والتفعيل
 @dp.callback_query_handler(lambda c: c.data.startswith(('auth_approve_', 'auth_block_')), user_id=ADMIN_ID)
 async def process_auth_callback(c: types.CallbackQuery):
-    action, target_id = c.data.split('_')[1], c.data.split('_')[2]
-    if action == "approve":
-        supabase.table("allowed_groups").update({"status": "active"}).eq("group_id", target_id).execute()
-        await c.answer("تم التفعيل ✅")
-        await c.message.edit_text(f"✅ تم تفعيل المجموعة: {target_id}")
-    elif action == "block":
-        supabase.table("allowed_groups").update({"status": "blocked"}).eq("group_id", target_id).execute()
-        await c.answer("تم الحظر ❌")
+    action = c.data.split('_')[1]
+    target_id = c.data.split('_')[2]
     
+    if action == "approve":
+        supabase.table("groups_hub").update({"status": "active"}).eq("group_id", target_id).execute()
+        await c.answer("تم التفعيل ✅", show_alert=True)
+    elif action == "block":
+        supabase.table("groups_hub").update({"status": "blocked"}).eq("group_id", target_id).execute()
+        await c.answer("تم الحظر ❌", show_alert=True)
+    
+    # العودة لتحديث القائمة
+    await admin_manage_groups(c)
 # ==========================================
 # 5. نهاية الملف: ضمان التشغيل 24/7 (Keep-Alive)
 # ==========================================
