@@ -1816,27 +1816,12 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
         asyncio.create_task(send_final_results(cid, group_scores[cid], len(questions)))
         
 # ==========================================
-# 4. محركات العرض والقوالب (Display Engines)
+# 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
 
-# [1] دالة العد التنازلي بالإيموجي (قبل الانطلاق)
-async def countdown_timer(message: types.Message, seconds=5):
-    """عد تنازلي احترافي بنفس نمط الإذاعة العامة"""
-    timer_icons = {5: "5️⃣", 4: "4️⃣", 3: "3️⃣", 2: "2️⃣", 1: "1️⃣"}
-    try:
-        for i in range(seconds, 0, -1):
-            icon = timer_icons.get(i, str(i))
-            await message.edit_text(f"🚀 **تجهيز المسابقة...**\n\nستبدأ خلال: {icon}")
-            await asyncio.sleep(1.2)
-        
-        await message.edit_text("🔥 **انطـــلاق! بالتوفيق للجميع..**")
-        await asyncio.sleep(1.5)
-    except Exception as e:
-        logging.error(f"Countdown Error: {e}")
-
-# [2] دالة إعلان تفاصيل المسابقة (تظهر لـ 3 ثواني)
+# [2] دالة إعلان تفاصيل المسابقة (المصلحة)
 async def announce_quiz_type(chat_id, quiz_data, engine_type):
-    """إعلان تفاصيل المسابقة الشاملة قبل البدء بـ 3 ثواني"""
+    """إعلان تفاصيل المسابقة بناءً على عمود is_public الحقيقي"""
     source_map = {
         "bot": "أسئلة البوت الذكية 🤖", 
         "user": "أسئلة المستخدم الخاصة 👤"
@@ -1847,7 +1832,10 @@ async def announce_quiz_type(chat_id, quiz_data, engine_type):
     q_count = quiz_data.get('questions_count', 10)
     q_time = quiz_data.get('time_limit', 15)
     q_mode = quiz_data.get('mode', 'السرعة ⚡')
-    q_scope = "إذاعة عامة 🌐" if quiz_data.get('quiz_scope') == 'عام' else "مسابقة داخلية 📍"
+    
+    # 🛠️ التصحيح الحقيقي هنا:
+    is_pub = quiz_data.get('is_public', False)
+    q_scope = "إذاعة عامة 🌐" if is_pub is True else "مسابقة داخلية 📍"
     
     announcement = (
         f"📊 **تفاصيل المسابقة المنطلقة:**\n"
@@ -1869,17 +1857,14 @@ async def announce_quiz_type(chat_id, quiz_data, engine_type):
     except Exception as e:
         logging.error(f"Error in announcement: {e}")
 
-# [3] دالة قالب السؤال (الذي يظهر أثناء المسابقة)
+# [3] دالة قالب السؤال (المصلحة)
 async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
-    """قالب السؤال الموحد المنسق (التنسيق الملكي)"""
-    # تحديد النطاق
-    scope_val = settings.get('scope', 'خاص')
-    q_scope = "إذاعة عامة 🌐" if scope_val == "عام" else "مسابقة داخلية 📍"
+    """قالب السؤال الذي يعرض النطاق الصحيح"""
+    # تصحيح النطاق بناءً على القيمة الممرة في settings
+    is_pub = settings.get('is_public', False) 
+    q_scope = "إذاعة عامة 🌐" if is_pub else "مسابقة داخلية 📍"
     
-    # تحديد المصدر
     source = settings.get('source', 'قاعدة البيانات')
-    
-    # جلب نص السؤال
     q_text = q_data.get('question_content') or q_data.get('question_text') or "⚠️ نص السؤال مفقود!"
     
     text = (
@@ -1895,7 +1880,6 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
     )
     
     return await bot.send_message(chat_id, text, parse_mode='Markdown')
-
 # [4] دالة التنظيف (حذف الرسائل)
 async def delete_after(msg, delay):
     await asyncio.sleep(delay)
