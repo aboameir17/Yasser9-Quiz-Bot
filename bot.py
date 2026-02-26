@@ -1814,67 +1814,58 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
             
             await asyncio.sleep(0.5)
 
-        # 4. إنهاء السؤال وحساب النتائج اللحظية
-        for cid in chat_ids:
-            current_winners = active_quizzes.get(cid, {}).get('winners', [])
-            active_quizzes[cid]['active'] = False # إغلاق السؤال
-            
-            if hint_messages.get(cid):
-                asyncio.create_task(delete_after(hint_messages[cid], 0))
-            
-            # حساب وتراكم النقاط (10 نقاط لكل فائز)
-            for w in current_winners:
+         # 5. إنهاء السؤال وحساب النقاط
+        if chat_id in active_quizzes:
+            active_quizzes[chat_id]['active'] = False
+            for w in active_quizzes[chat_id]['winners']:
                 uid = w['id']
-                if uid not in group_scores[cid]: 
-                    group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                group_scores[cid][uid]['points'] += 10
+                if uid not in overall_scores: 
+                    overall_scores[uid] = {"name": w['name'], "points": 0}
+                overall_scores[uid]['points'] += 10
         
-            # إرسال لوحة المبدعين لهذا السؤال (النتائج اللحظية)
-            asyncio.create_task(send_creative_results(cid, ans, current_winners, group_scores[cid]))
+            # 6. عرض لوحة المبدعين اللحظية
+            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
         
-        # --- [ 1. إظهار الإجابة الصحيحة أولاً ] ---
-        answer_text = f"✅ **الإجابة الصحيحة:** {ans}"
-        for cid in chat_ids:
+        # --- [ ⏱️ محرك العداد التنازلي المطور - نسخة الإيموجي الاحترافية ] ---
+        if i < len(questions) - 1:
+            # قاموس الإيموجي للأرقام (فخامة زرقاء)
+            emojis = {5: "5️⃣", 4: "4️⃣", 3: "3️⃣", 2: "2️⃣", 1: "1️⃣"}
+            # أيقونات الألوان للتنبيه
+            icons = {5: "🔴", 3: "🟡", 1: "🟢"}
+            
             try:
-                await bot.send_message(cid, answer_text, parse_mode="Markdown")
-            except: pass
-
-        # --- [ 2. فاصل العداد التنازلي الملون بالايموجي 🔴🟠🟢 ] ---
-        if i < total_q - 1:
-            try:
-                # قاموس الايموجي للأرقام
-                emojis = {5: "5️⃣", 4: "4️⃣", 3: "3️⃣", 2: "2️⃣", 1: "1️⃣"}
+                # 1. إرسال الرسالة التأسيسية (5 ثواني)
+                countdown_msg = await bot.send_message(chat_id, f"{icons[5]} استعدوا.. السؤال التالي يبدأ بعد {emojis[5]} ثواني...")
                 
-                countdown_msgs = []
-                # إرسال الرسالة التأسيسية (5 ثواني)
-                for cid in chat_ids:
-                    m = await bot.send_message(cid, f"🔴 استعدوا.. السؤال التالي يبدأ بعد {emojis[5]} ثواني...")
-                    countdown_msgs.append(m)
-                
-                # دورة التحديث: من 3 ثواني (أصفر) إلى ثانية واحدة (أخضر)
-                for count, icon in zip([3, 1], ["🟡", "🟢"]): 
+                # 2. تحديث العداد (كل ثانيتين لتجنب الحظر وتوفير الجهد)
+                for count in [3, 1]: 
                     await asyncio.sleep(2)
+                    icon = icons.get(count, "⚪")
                     emoji_num = emojis.get(count, count)
                     
-                    edit_tasks = []
-                    for m in countdown_msgs:
-                        edit_tasks.append(bot.edit_message_text(
+                    try:
+                        await countdown_msg.edit_text(
                             f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{emoji_num}</b> ثواني...",
-                            m.chat.id, m.message_id, parse_mode="HTML"
-                        ))
-                    await asyncio.gather(*edit_tasks, return_exceptions=True)
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logging.warning(f"Flood avoidance skip: {e}")
+                        break # إذا التليجرام أعطى تحذير، نتوقف عن التعديل ونكمل للسؤال التالي
                 
-                # انتظار أخير ثم حذف رسائل العداد لتنظيف الشات
-                await asyncio.sleep(1.2)
-                delete_tasks = [bot.delete_message(m.chat.id, m.message_id) for m in countdown_msgs]
-                await asyncio.gather(*delete_tasks, return_exceptions=True)
-
+                # 3. انتظار أخير ثم مسح العداد لتنظيف الشات
+                await asyncio.sleep(1.5)
+                try: await countdown_msg.delete()
+                except: pass
+                
             except Exception as e:
-                logging.error(f"Countdown Emoji Error: {e}")
+                logging.error(f"Countdown UI Error: {e}")
         else:
-            # انتظار بسيط قبل إعلان النتائج النهائية للسؤال الأخير
+            # إذا كان آخر سؤال، ننتظر ثانيتين لهدوء الأعضاء قبل لوحة الشرف
             await asyncio.sleep(2)
+    # 7. إعلان لوحة الشرف النهائية
+    await send_final_results(chat_id, overall_scores, len(questions))
 
+# ==========================================
     # 6. إعلان لوحة الشرف النهائية لكل مجموعة
     for cid in chat_ids:
         asyncio.create_task(send_final_results(cid, group_scores[cid], total_q))
