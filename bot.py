@@ -2311,6 +2311,49 @@ async def process_auth_callback(c: types.CallbackQuery):
     # تحديث القائمة أمام المطور فوراً
     await admin_manage_groups(c)
 # ==========================================
+# --- قبول طلبات المشرفين اداعات
+# ==========================================
+
+@dp.callback_query_handler(lambda c: c.data.startswith('accept_q_'))
+async def handle_accept_quiz(c: types.CallbackQuery):
+    """تسجيل المجموعة في الإذاعة العامة ومنع التكرار"""
+    data_parts = c.data.split('_')
+    quiz_id = data_parts[2]
+    owner_id = data_parts[3]
+    chat_id = c.message.chat.id
+    group_name = c.message.chat.title or "مجموعة غير معروفة"
+
+    try:
+        # 1. التحقق هل المجموعة مسجلة أصلاً في هذه المسابقة؟
+        check = supabase.table("quiz_participants")\
+            .select("*")\
+            .eq("quiz_id", quiz_id)\
+            .eq("chat_id", chat_id)\
+            .execute()
+
+        if check.data and len(check.data) > 0:
+            return await c.answer("⚠️ مجموعتكم مسجلة بالفعل في هذا التحدي! استعدوا..", show_alert=True)
+
+        # 2. تسجيل المجموعة في الجدول
+        supabase.table("quiz_participants").insert({
+            "quiz_id": quiz_id,
+            "chat_id": chat_id,
+            "group_name": group_name
+        }).execute()
+
+        # 3. إشعار بنجاح الانضمام
+        await c.answer("✅ تم قبول التحدي! ستبدأ المسابقة آلياً في مجموعتكم بعد قليل.", show_alert=True)
+        
+        # 4. تحديث رسالة الإذاعة في المجموعة لتأكيد الانضمام
+        new_text = c.message.text + f"\n\n✅ **انضمت المجموعة:** `{group_name}`"
+        try:
+            await c.message.edit_text(new_text, parse_mode="Markdown")
+        except: pass
+
+    except Exception as e:
+        logging.error(f"Error in accept quiz: {e}")
+        await c.answer("🚨 حدث خطأ أثناء الانضمام، حاول مجدداً.")
+# ==========================================
 # 5. نهاية الملف: ضمان التشغيل 24/7 (Keep-Alive)
 # ==========================================
 from aiohttp import web
