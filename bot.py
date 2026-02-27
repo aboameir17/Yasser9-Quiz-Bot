@@ -2096,13 +2096,13 @@ async def check_ans(m: types.Message):
                     "time": time.time() - active_quizzes[cid]['start_time']
                 })
                 
-                # 🔥 [هنا الإصلاح الجوهري للإذاعة العامة] 🔥
-                # إذا كان وضع المسابقة هو "السرعة ⚡"
-                if active_quizzes[cid].get('mode') == 'السرعة ⚡':
-                    # نبحث عن كل المجموعات "الأخرى" اللي عندها نفس الإجابة الآن ونقفلها
-                    for other_cid, quiz in active_quizzes.items():
-                        if quiz.get('active') and quiz.get('ans') == correct_raw:
-                            quiz['active'] = False
+                # 🔥 [إصلاح الإذاعة العامة] 🔥
+        if active_quizzes[cid].get('mode') == 'السرعة ⚡':
+            # نطلق صافرة النهاية في كل المجموعات المتصلة
+            for other_cid in list(active_quizzes.keys()):
+                quiz = active_quizzes[other_cid]
+                if quiz.get('active') and quiz.get('ans') == correct_raw:
+                    quiz['active'] = False
                             # كذا السؤال "مات" في كل المجموعات فوراً بمجرد أول إجابة صحيحة
         else:
             # تسجيل المخطئين لعرضهم لاحقاً (اختياري)
