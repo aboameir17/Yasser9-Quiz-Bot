@@ -2072,38 +2072,48 @@ def is_answer_correct(user_msg, correct_ans):
         return True
 
     return False
-# ---- رصد الإجابات (Check Answers) ----
 @dp.message_handler(lambda m: not m.text.startswith('/'))
 async def check_ans(m: types.Message):
     cid = m.chat.id
     uid = m.from_user.id
-
-    # 1. هل فيه مسابقة شغالة أصلاً في هذه المجموعة؟
+    
+    # 1. التأكد أن هذه المجموعة جزء من مسابقة نشطة
     if cid in active_quizzes and active_quizzes[cid]['active']:
         
-        user_answer = m.text.strip()
-        correct_answer = active_quizzes[cid]['ans']
-
-        # 2. هل الإجابة صحيحة؟ (نستخدم المنطق الذكي اللي صنعناه)
-        if is_answer_correct(user_answer, correct_answer):
+        user_raw = m.text.strip()
+        correct_raw = active_quizzes[cid]['ans']
+        
+        # 2. المنطق الذكي (ميزان العدل)
+        if is_answer_correct(user_raw, correct_raw):
             
-            # 3. هل هذا الشخص "أول مرة" يجاوب على هذا السؤال؟ (عشان ما يكرر نقاطه)
-            if not any(winner['id'] == uid for winner in active_quizzes[cid]['winners']):
+            # 3. التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال (في مجموعته)
+            if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
                 
-                # ✅ سجل الفائز في "المخزن المؤقت" للسؤال الحالي
+                # تسجيل الفائز في ذاكرة السؤال
                 active_quizzes[cid]['winners'].append({
                     "name": m.from_user.first_name, 
                     "id": uid,
                     "time": time.time() - active_quizzes[cid]['start_time']
                 })
-
-                # 4. [نقطة التحول للعامة]: لو المسابقة "سرعة ⚡"
+                
+                # 🔥 [هنا الإصلاح الجوهري للإذاعة العامة] 🔥
+                # إذا كان وضع المسابقة هو "السرعة ⚡"
                 if active_quizzes[cid].get('mode') == 'السرعة ⚡':
-                    # "الأعمى" يمد يده ويقفل السؤال في كل المجموعات المرتبطة
-                    for group_id in active_quizzes:
-                        # إذا كانت المجموعة عندها نفس الإجابة (يعني تبع الإذاعة)
-                        if active_quizzes[group_id].get('ans') == correct_answer:
-                            active_quizzes[group_id]['active'] = False
+                    # نبحث عن كل المجموعات "الأخرى" اللي عندها نفس الإجابة الآن ونقفلها
+                    for other_cid, quiz in active_quizzes.items():
+                        if quiz.get('active') and quiz.get('ans') == correct_raw:
+                            quiz['active'] = False
+                            # كذا السؤال "مات" في كل المجموعات فوراً بمجرد أول إجابة صحيحة
+        else:
+            # تسجيل المخطئين لعرضهم لاحقاً (اختياري)
+            if 'wrong_answers' not in active_quizzes[cid]:
+                active_quizzes[cid]['wrong_answers'] = []
+            
+            u_name = m.from_user.first_name
+            if u_name not in active_quizzes[cid]['wrong_answers']:
+                # نتأكد أنه لم يجب صح قبل أن نسجله كمخطئ
+                if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
+                    active_quizzes[cid]['wrong_answers'].append(u_name)
                             
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
