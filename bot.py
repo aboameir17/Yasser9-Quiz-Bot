@@ -651,13 +651,10 @@ async def launch_global_countdown(quiz_id, q_data):
     all_questions = q_data.get("questions", [])
     if not all_questions: return
     
-    # اختيار سؤال واحد للجميع
     selected_q = random.choice(all_questions)
     
-    # تفريغ وتعبئة العقل المركزي بالبيانات الجديدة
     global_session["active"] = True
     global_session["question"] = selected_q.get("question") or selected_q.get("text")
-    # تخزين الإجابة من الكود القديم (يدعم المحركين بوت أو مستخدم)
     raw_ans = str(selected_q.get('correct_answer') or selected_q.get('answer_text') or "")
     global_session["answer"] = normalize(raw_ans) 
     global_session["start_time"] = time.time()
@@ -665,7 +662,20 @@ async def launch_global_countdown(quiz_id, q_data):
     global_session["participants"] = list(group_messages.keys())
     global_session["question_time"] = q_data.get('time_limit', 15)
 
+    # 🚀 [التعديل هنا]: إرسال دالة المصلحة لكل القروبات قبل السؤال
+    announce_tasks = []
+    engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
+    
+    for chat_id in global_session["participants"]:
+        # نرسل تفاصيل المسابقة (القالب اللي فيه النطاق والمصدر)
+        announce_tasks.append(announce_quiz_type(chat_id, q_data, engine_type))
+    
+    # ننتظر حتى تنتهي الدالة من العرض (3 ثواني) والمسح في كل القروبات
+    if announce_tasks:
+        await asyncio.gather(*announce_tasks, return_exceptions=True)
+
     # 5️⃣ إرسال السؤال الموحد لكل القروبات فوراً ⚡
+    # (الآن سيعمل هذا الجزء بعد انتهاء الـ 3 ثواني الخاصة بالمصلحة)
     send_tasks = []
     question_text = (
         f"🌍 **السؤال العالمي الموحد:**\n\n"
@@ -678,10 +688,12 @@ async def launch_global_countdown(quiz_id, q_data):
         send_tasks.append(bot.send_message(chat_id, question_text, parse_mode="Markdown"))
 
     await asyncio.gather(*send_tasks, return_exceptions=True)
+    
+    # تحديث وقت البداية الفعلي للسؤال (بعد انتهاء المصلحة) لضمان دقة حساب السرعة
+    global_session["start_time"] = time.time()
 
-    # 6️⃣ تشغيل "مراقب الوقت" و "تنظيف البيانات"
+    # 6️⃣ تشغيل "مراقب الوقت"
     asyncio.create_task(auto_close_question())
-    supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
 # ==========================================
 # 6. أمر التفعيل (Request Activation)
 # ==========================================
