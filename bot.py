@@ -1839,8 +1839,8 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
                 logging.error(f"Countdown Error: {e}")
         else:
             await asyncio.sleep(2)
-    # 7. إعلان لوحة الشرف النهائية
-    await send_final_results(chat_id, overall_scores, len(questions
+   # 7. إعلان لوحة الشرف النهائية
+            await send_final_results(chat_id, overall_scores, len(questions))
     
 # ==========================================
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
