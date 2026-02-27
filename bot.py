@@ -2067,14 +2067,20 @@ async def announce_quiz_type(chat_id, quiz_data, engine_type):
 
 # [3] دالة قالب السؤال (المصلحة)
 async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
-    """قالب السؤال الذي يعرض النطاق الصحيح"""
-    # تصحيح النطاق بناءً على القيمة الممرة في settings
+    """
+    قالب السؤال - تصميم ياسر المطور 2026
+    المميزات: دعم النطاق، عرض المصدر، والعودة بكائن الرسالة للحذف.
+    """
+    # 1. تحديد النطاق (إذاعة عامة أو مسابقة داخلية)
     is_pub = settings.get('is_public', False) 
     q_scope = "إذاعة عامة 🌐" if is_pub else "مسابقة داخلية 📍"
     
+    # 2. جلب نص السؤال ومصدره
     source = settings.get('source', 'قاعدة البيانات')
+    # فحص محتوى السؤال في حال كان من البوت أو من مكتبتك
     q_text = q_data.get('question_content') or q_data.get('question_text') or "⚠️ نص السؤال مفقود!"
     
+    # 3. تنسيق نص الرسالة الفخم
     text = (
         f"🎓 **الـمنـظـم:** {settings['owner_name']} ☁️\n"
         f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
@@ -2087,12 +2093,12 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
         f"❓ **السؤال:**\n**{q_text}**"
     )
     
-    return await bot.send_message(chat_id, text, parse_mode='Markdown')
-# [4] دالة التنظيف (حذف الرسائل)
-async def delete_after(msg, delay):
-    await asyncio.sleep(delay)
-    try: await msg.delete()
-    except: pass
+    # 4. الإرسال مع return (ضروري جداً لمحرك الحذف)
+    try:
+        return await bot.send_message(chat_id, text, parse_mode='Markdown')
+    except Exception as e:
+        # في حال فشل الماركدوان، نحاول إرساله بنص عادي لضمان عدم توقف المسابقة
+        return await bot.send_message(chat_id, text.replace("*", "").replace("`", ""))ذ
 # ==========================================
 # 4. نظام رصد الإجابات الذكي (ياسر المطور)
 # ==========================================
