@@ -2086,7 +2086,7 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
         return await bot.send_message(chat_id, text, parse_mode='Markdown')
     except Exception as e:
         # في حال فشل الماركدوان، نحاول إرساله بنص عادي لضمان عدم توقف المسابقة
-        return await bot.send_message(chat_id, text.replace("*", "").replace("`", ""))ذ
+        return await bot.send_message(chat_id, text.replace("*", "").replace("`", ""))
 # ==========================================
 # 4. نظام رصد الإجابات الذكي (ياسر المطور)
 # ==========================================
