@@ -537,57 +537,76 @@ async def welcome_bot_to_group(message: types.Message):
             except:
                 # في حال لم تضع الآيدي بعد أو حدث خطأ، يرسل نصاً فقط
                 await message.answer(welcome_text, reply_markup=kb_welcome, parse_mode="HTML")
+
+# ==========================================
 async def launch_global_countdown(quiz_id, q_data):
-    """محرك العد التنازلي الذكي: تعديل رسالة واحدة بدلاً من الإزعاج"""
-    # 1. جلب المجموعات التي ضغطت "قبول التحدي"
+    """محرك الإذاعة الموحد: سؤال واحد، توقيت واحد، وصافرة واحدة 🚀"""
+    # 1. جلب المجموعات المشاركة
     participants = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz_id).execute()
     
     if not participants.data:
         logging.info(f"No participants for quiz {quiz_id}")
         return 
 
-    # 2. إرسال الرسالة الأولى وتخزين الـ IDs لتعديلها لاحقاً
+    # 2. إعداد رسائل العداد
     timer_icons = ["🔟", "9️⃣", "8️⃣", "7️⃣", "6️⃣", "5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣", "🚀"]
-    group_messages = {} # لتخزين معرفات الرسائل {chat_id: message_id}
+    group_messages = {}
 
-    # إرسال الرسالة التأسيسية
     tasks = []
     for p in participants.data:
         tasks.append(bot.send_message(p['chat_id'], "⏳ **استعدوا.. التحدي العالمي سيبدأ!**"))
     
     sent_messages = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # ربط كل قروب برسالة العداد الخاصة به
     for msg in sent_messages:
         if isinstance(msg, types.Message):
             group_messages[msg.chat.id] = msg.message_id
 
-    # 3. دورة العد التنازلي (تعديل الرسالة - Edit)
+    # 3. دورة العد التنازلي (المزامنة اللحظية)
     for icon in timer_icons:
         edit_tasks = []
         text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق! أظهروا لنا قوتكم..**"
-        
         for chat_id, msg_id in group_messages.items():
             edit_tasks.append(bot.edit_message_text(text, chat_id, msg_id, parse_mode="Markdown"))
         
         if edit_tasks:
             await asyncio.gather(*edit_tasks, return_exceptions=True)
-        
-        await asyncio.sleep(1.1) # سرعة العد
+        await asyncio.sleep(1.1)
 
-    # 4. تشغيل المحرك الصحيح (بوت أو مستخدم)
-    is_bot = q_data.get('is_bot_quiz', False)
+    # 4️⃣ 🔥 الضربة القاضية: اختيار سؤال موحد وتفعيل العقل المركزي
+    all_questions = q_data.get("questions", [])
+    if not all_questions: return
     
-    for p in participants.data:
-        target_chat = p['chat_id']
-        if is_bot:
-            # تشغيل محرك البوت (النسخة العشوائية الشغالة)
-            asyncio.create_task(engine_bot_questions(target_chat, q_data, "إذاعة عامة 🌐"))
-        else:
-            # تشغيل محرك الأعضاء
-            asyncio.create_task(engine_user_questions(target_chat, q_data, "إذاعة عامة 🌐"))
+    # اختيار سؤال واحد للجميع
+    selected_q = random.choice(all_questions)
+    
+    # تفريغ وتعبئة العقل المركزي بالبيانات الجديدة
+    global_session["active"] = True
+    global_session["question"] = selected_q.get("question") or selected_q.get("text")
+    # تخزين الإجابة من الكود القديم (يدعم المحركين بوت أو مستخدم)
+    raw_ans = str(selected_q.get('correct_answer') or selected_q.get('answer_text') or "")
+    global_session["answer"] = normalize(raw_ans) 
+    global_session["start_time"] = time.time()
+    global_session["winner"] = None
+    global_session["participants"] = list(group_messages.keys())
+    global_session["question_time"] = q_data.get('time_limit', 15)
 
-    # 5. تنظيف الجدول المؤقت
+    # 5️⃣ إرسال السؤال الموحد لكل القروبات فوراً ⚡
+    send_tasks = []
+    question_text = (
+        f"🌍 **السؤال العالمي الموحد:**\n\n"
+        f"❓ {global_session['question']}\n\n"
+        f"⏱ الوقت: {global_session['question_time']} ثانية\n"
+        f"⚡ أول إجابة صحيحة تفوز عالمياً!"
+    )
+    
+    for chat_id in global_session["participants"]:
+        send_tasks.append(bot.send_message(chat_id, question_text, parse_mode="Markdown"))
+
+    await asyncio.gather(*send_tasks, return_exceptions=True)
+
+    # 6️⃣ تشغيل "مراقب الوقت" و "تنظيف البيانات"
+    asyncio.create_task(auto_close_question())
     supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
 # ==========================================
 # 6. أمر التفعيل (Request Activation)
