@@ -496,6 +496,35 @@ class Form(StatesGroup):
     waiting_for_quiz_name = State()
 
 # ==========================================
+# [3] القناص العالمي: رصد الإجابة في كل القروبات 🎯
+# ==========================================
+@dp.message_handler(lambda m: global_session["active"] and not m.text.startswith('/'))
+async def global_answer_handler(m: types.Message):
+    # إذا كان فيه فائز أصلاً، اخرج فوراً (منع الازدواجية)
+    if global_session["winner"] is not None:
+        return
+
+    uid = m.from_user.id
+    cid = m.chat.id
+    user_text = m.text.strip()
+    
+    # استخدام "ميزان العدل" الخاص بـ ياسر (الذكاء العربي)
+    if is_answer_correct(user_text, global_session["answer"]):
+        # ✅ لحظة الحسم: تسجيل الفائز عالمياً
+        global_session["winner"] = {
+            "name": m.from_user.full_name,
+            "id": uid,
+            "chat_name": m.chat.title or "مجموعة خاصة",
+            "time": round(time.time() - global_session["start_time"], 2)
+        }
+        
+        # 🛑 إطلاق الصافرة: إيقاف السؤال عند الجميع فوراً
+        global_session["active"] = False
+        
+        # إرسال رسالة الإعلان لكل المشاركين
+        await announce_winner()
+        
+# ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
