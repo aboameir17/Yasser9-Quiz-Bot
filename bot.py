@@ -111,57 +111,59 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, wro
     
 async def send_final_results(chat_id, scores, total_q, is_public=False):
     """
-    إصلاح ياسر المطور: عرض العباقرة في كل الحالات
+    إصلاح ياسر المطور: عرض العباقرة في كل الحالات مع معالجة الأخطاء
     """
-    msg = "🏁 **انتهت المسابقة بنجاح!** 🏁\n"
-    msg += "شكرًا لكل من شارك وأمتعنا بمنافسته. 🌹\n\n"
-    msg += "❃┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅❃\n"
-    msg += "🏆 **{ العباقرة }** 🏆\n"
-    msg += "❃┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅❃\n\n"
+    try:
+        msg = "🏁 **انتهت المسابقة بنجاح!** 🏁\n"
+        msg += "شكرًا لكل من شارك وأمتعنا بمنافسته. 🌹\n\n"
+        msg += "❃┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅❃\n"
+        msg += "🏆 **{ العباقرة }** 🏆\n"
+        msg += "❃┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅❃\n\n"
 
-    found_winners = False
+        found_winners = False
 
-    if is_public:
-        # 🌐 في الإذاعة العامة: نعرض ترتيب المجموعات
-        # ترتيب المجموعات حسب إجمالي نقاط لاعبيها
-        sorted_groups = sorted(
-            scores.items(), 
-            key=lambda x: sum(p['points'] for p in x[1].values()), 
-            reverse=True
-        )
-        
-        for i, (gid, players) in enumerate(sorted_groups, 1):
-            if not players: continue
-            found_winners = True
-            total_pts = sum(p['points'] for p in players.values())
-            msg += f"{i}️⃣ **مجموعة: {gid}** 🎖 (إجمالي: {total_pts})\n"
-            # عرض أفضل لاعب في كل مجموعة كـ "عبقري المجموعة"
-            top_p = max(players.values(), key=lambda x: x['points'])
-            msg += f"┗ 👤 بطلها: {top_p['name']} ({top_p['points']} ن)\n"
-            msg += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
-    else:
-        # 📍 في المسابقة الخاصة: نعرض ترتيب الأفراد
-        # الترتيب حسب النقاط
-        sorted_players = sorted(scores.values(), key=lambda x: x['points'], reverse=True)
-        medals = ["🥇", "🥈", "🥉", "🏅", "🏅"]
-        
-        for i, p in enumerate(sorted_players[:5]):
-            found_winners = True
-            icon = medals[i] if i < len(medals) else "👤"
-            msg += f"{icon} **{p['name']}** — {p['points']} نقطة\n"
-            msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈\n"
+        if is_public:
+            # 🌐 في الإذاعة العامة: نعرض ترتيب المجموعات
+            sorted_groups = sorted(
+                scores.items(), 
+                key=lambda x: sum(p['points'] for p in x[1].values()) if isinstance(x[1], dict) else 0, 
+                reverse=True
+            )
+            
+            for i, (gid, players) in enumerate(sorted_groups, 1):
+                if not players: continue
+                found_winners = True
+                total_pts = sum(p['points'] for p in players.values())
+                msg += f"{i}️⃣ **مجموعة: {gid}** 🎖 (إجمالي: {total_pts})\n"
+                top_p = max(players.values(), key=lambda x: x['points'])
+                msg += f"┗ 👤 بطلها: {top_p['name']} ({top_p['points']} ن)\n"
+                msg += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
+        else:
+            # 📍 في المسابقة الخاصة: نعرض ترتيب الأفراد
+            sorted_players = sorted(scores.values(), key=lambda x: x['points'], reverse=True)
+            medals = ["🥇", "🥈", "🥉", "🏅", "🏅"]
+            
+            for i, p in enumerate(sorted_players[:5]):
+                found_winners = True
+                icon = medals[i] if i < len(medals) else "👤"
+                msg += f"{icon} **{p['name']}** — {p['points']} نقطة\n"
+                msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈\n"
 
-    if not found_winners:
-        # إذا لم يجب أحد (مثل ما ظهر في الصورة الثانية)
-        msg = "🏁 **انتهت المسابقة!**\n\n❌ للأسف لم يتم تسجيل أي نقاط في هذه الجولة. حظاً أوفر المرة القادمة! 🌹"
-    else:
-        msg += f"\n📊 إجمالي أسئلة الجولة: {total_q}\n"
-        msg += "تهانينا للفائزين وحظاً أوفر للجميع! ❤️"
+        if not found_winners:
+            msg = "🏁 **انتهت المسابقة!**\n\n❌ للأسف لم يتم تسجيل أي نقاط في هذه الجولة. حظاً أوفر المرة القادمة! 🌹"
+        else:
+            msg += f"\n📊 إجمالي أسئلة الجولة: {total_q}\n"
+            msg += "تهانينا للفائزين وحظاً أوفر للجميع! ❤️"
 
-    return await bot.send_message(chat_id, msg, parse_mode="HTML")
+        return await bot.send_message(chat_id, msg, parse_mode="HTML")
+
     except Exception as e:
         logging.error(f"Error in send_final_results: {e}")
-
+        # محاولة إرسال رسالة بسيطة في حال فشل القالب الفخم
+        try:
+            return await bot.send_message(chat_id, "🏁 انتهت المسابقة! (حدث خطأ في عرض الترتيب)")
+        except:
+            pass
     # [اختياري] هنا يمكنك استدعاء دالة لترحيل النقاط إلى SQL (groups_hub) إذا أردت حفظها للأبد
 async def sync_points_to_db(group_scores, is_public=False):
     """
