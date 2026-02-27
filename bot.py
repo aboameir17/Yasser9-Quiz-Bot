@@ -1862,24 +1862,22 @@ async def delete_after(message, delay):
         await message.delete()
     except Exception: 
         pass
+
 # ==========================================
 # [2] المحرك الموحد (نسخة الشات النظيف والترحيل 🧹💎)
 # ==========================================
 async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine_type):
-    """المحرك العالمي المكتمل والشامل - نسخة ياسر 2026 🏆"""
-    if not isinstance(chat_ids, list):
-        chat_ids = [chat_ids]
+    """المحرك العالمي - نسخة إصلاح نقاط الإذاعة العامة والحذف النظيف 🧹"""
+    if not isinstance(chat_ids, list): chat_ids = [chat_ids]
 
     random.shuffle(questions)
-    group_scores = {cid: {} for cid in chat_ids}
+    group_scores = {cid: {} for cid in chat_ids} 
     is_pub = quiz_data.get('is_public', False)
     total_q = len(questions)
-
-    # ✅ الخطوة الثانية: تجهيز شنطة الحذف (Messages Box)
     messages_to_delete = {cid: [] for cid in chat_ids}
 
     for i, q in enumerate(questions):
-        # 1. تحديد الإجابة والاسم حسب نوع المحرك
+        # 1. تجهيز الإجابة
         if engine_type == "bot":
             ans = str(q.get('correct_answer') or "").strip()
             cat_name = q.get('category') or "ذكاء اصطناعي 🤖"
@@ -1888,150 +1886,75 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
             cat_info = q.get('categories', {})
             cat_name = cat_info.get('name', 'عام 📁') if isinstance(cat_info, dict) else "خاص 🔒"
 
-        # 2. تصفير الحالة لكل المجموعات المشاركة
+        # 2. بدء السؤال في كل المجموعات
         for cid in chat_ids:
             active_quizzes[cid] = {
-                "active": True, 
-                "ans": ans, 
-                "winners": [], 
-                "wrong_answers": [], # أضفناها لدعم قالب الإجابة
-                "mode": quiz_data.get('mode', 'السرعة ⚡'), 
-                "hint_sent": False,
-                "start_time": time.time()
+                "active": True, "ans": ans, "winners": [], "wrong_answers": [],
+                "mode": quiz_data.get('mode', 'السرعة ⚡'), "hint_sent": False, "start_time": time.time()
             }
-            
-            # ✅ تعديل مهم: ننتظر السؤال (await) بدلاً من create_task لالتقاط الـ ID
             q_msg = await send_quiz_question(cid, q, i+1, total_q, {
-                'owner_name': owner_name, 
-                'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-                'time_limit': quiz_data.get('time_limit', 15), 
-                'cat_name': cat_name,
-                'is_public': is_pub,
-                'source': "أسئلة البوت 🤖" if engine_type == "bot" else "مكتبتك الخاصة 👤"
+                'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+                'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name,
+                'is_public': is_pub, 'source': "المكتبة 👤" if engine_type != "bot" else "البوت 🤖"
             })
-            if q_msg:
-                messages_to_delete[cid].append(q_msg.message_id)
+            if q_msg: messages_to_delete[cid].append(q_msg.message_id)
         
-        # 3. محرك الوقت الذكي ومراقبة الإجابات
-        start_time = time.time()
+        # 3. محرك الانتظار والتلميح
+        start_t = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
-        
-        while time.time() - start_time < t_limit:
-            all_done = all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids)
-            if all_done: break
-            
-            # منطق التلميح الذكي ✨
-            if quiz_data.get('smart_hint') and (time.time() - start_time) >= (t_limit / 2):
+        while time.time() - start_t < t_limit:
+            if all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids): break
+            if quiz_data.get('smart_hint') and (time.time() - start_t) >= (t_limit / 2):
                 hint_text = await generate_smart_hint(ans) 
                 for cid in chat_ids:
-                    if not active_quizzes.get(cid, {}).get('active', False): continue
-                    if not active_quizzes[cid]['hint_sent']:
+                    if active_quizzes.get(cid, {}).get('active') and not active_quizzes[cid]['hint_sent']:
                         try:
                             h_msg = await bot.send_message(cid, f"💡 تلميح: <code>{hint_text}</code>", parse_mode="HTML")
-                            # ✅ إضافة التلميح لشنطة الحذف
                             if h_msg: messages_to_delete[cid].append(h_msg.message_id)
                             active_quizzes[cid]['hint_sent'] = True
                         except: pass
             await asyncio.sleep(0.5)
 
-         # 5. إنهاء السؤال وحساب النقاط (تحديث ياسر المطور 2026)
-        
-        # أولاً: تجميع كل الفائزين من كل المجموعات (عشان النقاط ما تضيع)
+        # 4. 🔥 حصد الفائزين وتحديث النقاط (الإصلاح الجوهري) 🔥
         all_round_winners = []
         for cid in chat_ids:
             if cid in active_quizzes:
-                all_round_winners.extend(active_quizzes[cid].get('winners', []))
-                active_quizzes[cid]['active'] = False # إغلاق السؤال
+                active_quizzes[cid]['active'] = False
+                # سحب الفائزين من الذاكرة اللحظية ونقلهم لجدول النقاط
+                for w in active_quizzes[cid].get('winners', []):
+                    all_round_winners.append(w)
+                    uid = w['id']
+                    # تحديث النقاط في المجموعة التي شارك فيها اللاعب
+                    if uid not in group_scores[cid]:
+                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                    group_scores[cid][uid]['points'] += 10
 
-        # ثانياً: تحديث النقاط في القاموس الرئيسي (هنا مربط الفرس 🐎)
-        for w in all_round_winners:
-            uid = w['id']
-            # نبحث عن المجموعة التي ينتمي لها هذا اللاعب
-            # (في الإذاعة العامة، group_scores تحتوي على كل chat_id)
-            for cid in chat_ids:
-                # إذا كان هذا اللاعب هو من أرسل الإجابة في هذه المجموعة
-                # أو إذا كنت تريد تسجيل النقاط في مجموعته الأصلية:
-                if uid not in group_scores[cid]:
-                    group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                
-                # إضافة 10 نقاط (تأكد أن الإضافة تتم مرة واحدة فقط لكل لاعب)
-                group_scores[cid][uid]['points'] += 10
-                break # نخرج بعد التحديث لأول مجموعة وجدناه فيها
-
-        # ثالثاً: إرسال النتائج اللحظية لكل مجموعة
+        # 5. عرض النتائج اللحظية (مره واحدة لكل مجموعة)
         for cid in chat_ids:
             # نرسل group_scores (الكاملة) إذا كانت عامة ليعرض الترتيب الكلي
             res_msg = await send_creative_results(
-                cid, 
-                ans, 
-                all_round_winners, 
-                group_scores, # 👈 القاموس اللي فيه كل النقاط
-                active_quizzes[cid].get('wrong_answers', []), 
-                is_pub
+                cid, ans, all_round_winners, 
+                (group_scores if is_pub else group_scores[cid]), 
+                active_quizzes[cid].get('wrong_answers', []), is_pub
             )
-            if res_msg:
-                messages_to_delete[cid].append(res_msg.message_id)
+            if res_msg: messages_to_delete[cid].append(res_msg.message_id)
         
-                # ✅ التقاط رسالة النتائج اللحظية للحذف
-                res_msg = await send_creative_results(cid, ans, winners, group_scores, wrongs, is_pub)
-                if res_msg:
-                    messages_to_delete[cid].append(res_msg.message_id)
-        
-        # --- [ العداد التنازلي المطور ] ---
+        # --- العداد التنازلي ---
         if i < total_q - 1:
-            # (كود العداد التنازلي الخاص بك كما هو - يحذف نفسه تلقائياً)
-            emojis = {5: "5️⃣", 3: "3️⃣", 1: "1️⃣"}
-            icons = {5: "🔴", 3: "🟡", 1: "🟢"}
-            countdown_msgs = []
-            for cid in chat_ids:
-                try:
-                    m = await bot.send_message(cid, f"{icons[5]} استعدوا.. السؤال التالي يبدأ بعد {emojis[5]} ثواني...")
-                    countdown_msgs.append(m)
-                except: pass
-            for count in [3, 1]: 
-                await asyncio.sleep(2)
-                for m in countdown_msgs:
-                    try: await bot.edit_message_text(f"{icons.get(count, '⚪')} استعدوا.. السؤال التالي بعد <b>{emojis[count]}</b> ثواني...", m.chat.id, m.message_id, parse_mode="HTML")
-                    except: break 
-            await asyncio.sleep(1.2)
-            for m in countdown_msgs:
-                try: await bot.delete_message(m.chat.id, m.message_id)
-                except: pass
-        else:
-            await asyncio.sleep(2)
+            await asyncio.sleep(3) # وقت لمشاهدة النتيجة قبل العداد
 
-    # ======================================================
-    # --- [ 🧹 اللمسة الأخيرة: تنظيف الشات الشامل ] ---
-    # ======================================================
+    # --- 🧹 التنظيف النهائي وإعلان النتائج ---
     for cid in chat_ids:
-        for mid in messages_to_delete.get(cid, []):
-            try:
-                await bot.delete_message(cid, mid)
-            except:
-                pass
-
-    # ======================================================
-    # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
-    # ======================================================
-    for cid in chat_ids:
-        final_scores = group_scores.get(cid, {})
-        if final_scores:
-            # ✅ استدعاء لوحة الشرف (لا تحذفها أبداً لتظل ذكرى للفائزين)
-            await send_final_results(cid, final_scores, total_q, is_pub)
-        else:
-            try: await bot.send_message(cid, "🏁 انتهت المسابقة بدون نقاط سجلت.")
+        for mid in messages_to_delete[cid]:
+            try: await bot.delete_message(cid, mid)
             except: pass
+        
+        final_data = group_scores if is_pub else group_scores.get(cid, {})
+        await send_final_results(cid, final_data, total_q, is_pub)
 
-    # 🚀 ترحيل النقاط لجدول groups_hub
-    try:
-        await sync_points_to_db(group_scores, is_pub)
-    except Exception as e:
-        logging.error(f"⚠️ فشل ترحيل النقاط: {e}")
-
-    # تنظيف الذاكرة
+    await sync_points_to_db(group_scores, is_pub)
     for cid in chat_ids:
         if cid in active_quizzes: del active_quizzes[cid]
-
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
