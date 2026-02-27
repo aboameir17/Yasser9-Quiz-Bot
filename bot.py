@@ -567,6 +567,51 @@ async def welcome_bot_to_group(message: types.Message):
                 # في حال لم تضع الآيدي بعد أو حدث خطأ، يرسل نصاً فقط
                 await message.answer(welcome_text, reply_markup=kb_welcome, parse_mode="HTML")
 
+
+# ==========================================
+# --- ---
+# ==========================================
+async def announce_winner():
+    """
+    دالة الإعلان العالمي: تقوم باستدعاء قالب ياسر الفخم 
+    وإرسال النتيجة لكل القروبات المشاركة في نفس اللحظة.
+    """
+    winner_data = global_session["winner"]
+    if not winner_data:
+        return
+
+    # تحضير البيانات لتدخل في قالبك (send_creative_results)
+    # نضع الفائز في قائمة كما يتوقع القالب
+    winners_list = [{
+        "name": winner_data['name'],
+        "id": winner_data['id'],
+        "time": winner_data['time']
+    }]
+
+    # الإجابة الصحيحة من العقل المركزي
+    correct_ans = global_session["answer"]
+
+    tasks = []
+    # نرسل القالب لكل chat_id مسجل في الإذاعة
+    for chat_id in global_session["participants"]:
+        # استدعاء دالتك الفخمة (التي أرسلتها لي قبل قليل)
+        # نمرر group_scores فارغ {} لأننا في إذاعة عامة والترتيب يعتمد على الفائز العالمي
+        tasks.append(
+            send_creative_results(
+                chat_id=chat_id,
+                correct_ans=correct_ans,
+                winners=winners_list,
+                group_scores={}, 
+                wrong_answers=[], 
+                is_public=True
+            )
+        )
+
+    # إطلاق الإعلان في كل المجموعات دفعة واحدة ⚡
+    await asyncio.gather(*tasks, return_exceptions=True)
+    
+# ==========================================
+# --- ---
 # ==========================================
 async def launch_global_countdown(quiz_id, q_data):
     """محرك الإذاعة الموحد: سؤال واحد، توقيت واحد، وصافرة واحدة 🚀"""
