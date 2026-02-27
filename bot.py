@@ -109,60 +109,56 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, wro
     # ✅ التعديل الجوهري هنا: أضفنا return ليعود كائن الرسالة للمحرك
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
     
-async def send_final_results(chat_id, group_scores, total_questions, is_public=False):
-    """تصميم ياسر الختامي: تتويج الأبطال بناءً على نقاط الجولة الحالية فقط"""
-    
-    # 1. الديباجة (الرأسية)
-    msg =  "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
-    msg += "🏁 <b>انـتـهـت الـمـسـابـقـة بنجاح!</b> 🏁\n"
-    msg += "شكرًا لكل من شارك وأمتعنا بمنافسته. 🌹\n"
-    msg += "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
-    
-    msg += "❃┄┄┄┈•{🏆العباقرة}•┈┄┄┄❃\n\n"
+async def send_final_results(chat_id, scores, total_q, is_public=False):
+    """
+    إصلاح ياسر المطور: عرض العباقرة في كل الحالات
+    """
+    msg = "🏁 **انتهت المسابقة بنجاح!** 🏁\n"
+    msg += "شكرًا لكل من شارك وأمتعنا بمنافسته. 🌹\n\n"
+    msg += "❃┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅❃\n"
+    msg += "🏆 **{ العباقرة }** 🏆\n"
+    msg += "❃┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅❃\n\n"
+
+    found_winners = False
 
     if is_public:
-        # --- [ النطاق العام: ترتيب المجموعات ونقاط أعضائها في هذه الجولة ] ---
-        # ترتيب المجموعات بناءً على مجموع نقاط أعضائها في هذه المسابقة
+        # 🌐 في الإذاعة العامة: نعرض ترتيب المجموعات
+        # ترتيب المجموعات حسب إجمالي نقاط لاعبيها
         sorted_groups = sorted(
-            group_scores.items(), 
+            scores.items(), 
             key=lambda x: sum(p['points'] for p in x[1].values()), 
             reverse=True
         )
-
-        for gid, players in sorted_groups:
-            if not players: continue
-            
-            group_total = sum(p['points'] for p in players.values())
-            # عرض اسم المجموعة (يمكنك استبدال gid باسم المجموعة من قاعدة البيانات)
-            msg += f"🏘 <b>المجموعة: {gid}</b>\n"
-            msg += f"🏆 إجمالي نقاط الجولة: <b>{group_total}</b>\n"
-            
-            # ترتيب اللاعبين داخل المجموعة في هذه الجولة
-            sorted_p = sorted(players.values(), key=lambda x: x['points'], reverse=True)
-            for p in sorted_p:
-                msg += f"┗ 👤 {p['name']} — {p['points']}\n"
-            
-            msg += "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n" # سطر فاصل بين كل مجموعة وأخرى
-
-    else:
-        # --- [ النطاق الخاص: ترتيب اللاعبين الفردي في هذه الجولة ] ---
-        # نأخذ بيانات المجموعة الحالية فقط
-        current_players = group_scores.get(chat_id, {}) if isinstance(group_scores, dict) else group_scores
-        sorted_players = sorted(current_players.values(), key=lambda x: x['points'], reverse=True)
         
-        medals = ["🥇", "🥈", "🥉"]
-        for i, player in enumerate(sorted_players[:3]):
-            rank_text = 'الأول' if i==0 else 'الثاني' if i==1 else 'الثالث'
-            msg += f"{medals[i]} المركز {rank_text}: <b>{player['name']}</b>\n"
-            msg += f"┗ 🏆 النقاط: <b>{player['points']}</b>\n"
-            msg += "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n" # سطر فاصل بين المراتب
+        for i, (gid, players) in enumerate(sorted_groups, 1):
+            if not players: continue
+            found_winners = True
+            total_pts = sum(p['points'] for p in players.values())
+            msg += f"{i}️⃣ **مجموعة: {gid}** 🎖 (إجمالي: {total_pts})\n"
+            # عرض أفضل لاعب في كل مجموعة كـ "عبقري المجموعة"
+            top_p = max(players.values(), key=lambda x: x['points'])
+            msg += f"┗ 👤 بطلها: {top_p['name']} ({top_p['points']} ن)\n"
+            msg += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
+    else:
+        # 📍 في المسابقة الخاصة: نعرض ترتيب الأفراد
+        # الترتيب حسب النقاط
+        sorted_players = sorted(scores.values(), key=lambda x: x['points'], reverse=True)
+        medals = ["🥇", "🥈", "🥉", "🏅", "🏅"]
+        
+        for i, p in enumerate(sorted_players[:5]):
+            found_winners = True
+            icon = medals[i] if i < len(medals) else "👤"
+            msg += f"{icon} **{p['name']}** — {p['points']} نقطة\n"
+            msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈\n"
 
-    # الخاتمة
-    msg += f"\n📊 إجمالي أسئلة الجولة: {total_questions}\n"
-    msg += "تهانينا للفائزين وحظاً أوفر للجميع! ❤️"
-    
-    try:
-        await bot.send_message(chat_id, msg, parse_mode="HTML")
+    if not found_winners:
+        # إذا لم يجب أحد (مثل ما ظهر في الصورة الثانية)
+        msg = "🏁 **انتهت المسابقة!**\n\n❌ للأسف لم يتم تسجيل أي نقاط في هذه الجولة. حظاً أوفر المرة القادمة! 🌹"
+    else:
+        msg += f"\n📊 إجمالي أسئلة الجولة: {total_q}\n"
+        msg += "تهانينا للفائزين وحظاً أوفر للجميع! ❤️"
+
+    return await bot.send_message(chat_id, msg, parse_mode="HTML")
     except Exception as e:
         logging.error(f"Error in send_final_results: {e}")
 
