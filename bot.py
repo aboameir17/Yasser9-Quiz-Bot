@@ -1934,18 +1934,43 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
                         except: pass
             await asyncio.sleep(0.5)
 
-         # 5. إنهاء السؤال وعرض النتائج اللحظية
+         # 5. إنهاء السؤال وحساب النقاط (تحديث ياسر المطور 2026)
+        
+        # أولاً: تجميع كل الفائزين من كل المجموعات (عشان النقاط ما تضيع)
+        all_round_winners = []
         for cid in chat_ids:
             if cid in active_quizzes:
-                active_quizzes[cid]['active'] = False
-                winners = active_quizzes[cid].get('winners', [])
-                wrongs = active_quizzes[cid].get('wrong_answers', [])
+                all_round_winners.extend(active_quizzes[cid].get('winners', []))
+                active_quizzes[cid]['active'] = False # إغلاق السؤال
+
+        # ثانياً: تحديث النقاط في القاموس الرئيسي (هنا مربط الفرس 🐎)
+        for w in all_round_winners:
+            uid = w['id']
+            # نبحث عن المجموعة التي ينتمي لها هذا اللاعب
+            # (في الإذاعة العامة، group_scores تحتوي على كل chat_id)
+            for cid in chat_ids:
+                # إذا كان هذا اللاعب هو من أرسل الإجابة في هذه المجموعة
+                # أو إذا كنت تريد تسجيل النقاط في مجموعته الأصلية:
+                if uid not in group_scores[cid]:
+                    group_scores[cid][uid] = {"name": w['name'], "points": 0}
                 
-                for w in winners:
-                    uid = w['id']
-                    if uid not in group_scores[cid]:
-                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                    group_scores[cid][uid]['points'] += 10
+                # إضافة 10 نقاط (تأكد أن الإضافة تتم مرة واحدة فقط لكل لاعب)
+                group_scores[cid][uid]['points'] += 10
+                break # نخرج بعد التحديث لأول مجموعة وجدناه فيها
+
+        # ثالثاً: إرسال النتائج اللحظية لكل مجموعة
+        for cid in chat_ids:
+            # نرسل group_scores (الكاملة) إذا كانت عامة ليعرض الترتيب الكلي
+            res_msg = await send_creative_results(
+                cid, 
+                ans, 
+                all_round_winners, 
+                group_scores, # 👈 القاموس اللي فيه كل النقاط
+                active_quizzes[cid].get('wrong_answers', []), 
+                is_pub
+            )
+            if res_msg:
+                messages_to_delete[cid].append(res_msg.message_id)
         
                 # ✅ التقاط رسالة النتائج اللحظية للحذف
                 res_msg = await send_creative_results(cid, ans, winners, group_scores, wrongs, is_pub)
