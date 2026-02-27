@@ -1747,87 +1747,102 @@ async def delete_after(message, delay):
         pass
 
 # ==========================================
-# [2] المحرك الخاص (نسخة المسابقات الداخلية - استقرار 100%)
+# [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
-async def run_internal_logic(chat_id, questions, quiz_data, owner_name, engine_type):
-    """محرك المسابقات الخاصة المنظم - بدون تداخل وبسرعة صاروخية"""
+async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_type):
     random.shuffle(questions)
-    overall_scores = {} # ذاكرة النقاط لهذه الجولة
-    total_q = len(questions)
+    overall_scores = {}
 
     for i, q in enumerate(questions):
-        # 🟢 [1] تجهيز بيانات السؤال الحالي
-        ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
-        cat_name = q.get('category') or (q.get('categories', {}).get('name') if isinstance(q.get('categories'), dict) else "عام 📁")
+        # 1. استخراج الإجابة والنص حسب نوع المصدر
+        if engine_type == "bot":
+            ans = str(q.get('correct_answer') or "").strip()
+            cat_name = q.get('category') or "بوت"
+        elif engine_type == "user":
+            ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
+            cat_name = q['categories']['name'] if q.get('categories') else "عام"
+        else:
+            ans = str(q.get('correct_answer') or q.get('ans') or "").strip()
+            cat_name = "قسم خاص 🔒"
 
-        # 🟢 [2] تصفير الحالة وبدء السؤال
+        # 2. تصفير حالة السؤال وتجهيز الذاكرة النشطة
         active_quizzes[chat_id] = {
-            "active": True, "ans": ans, "winners": [], 
-            "mode": quiz_data.get('mode', 'السرعة ⚡'), "hint_sent": False,
-            "start_time": time.time()
+            "active": True, 
+            "ans": ans, 
+            "winners": [], 
+            "mode": quiz_data['mode'], 
+            "hint_sent": False
         }
         
-        # إرسال السؤال (Await لضمان الظهور)
-        await send_quiz_question(chat_id, q, i+1, total_q, {
-            'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-            'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name,
-            'is_public': False, 'source': "أسئلة البوت 🤖" if engine_type == "bot" else "مكتبتك الخاصة 👤"
+        # 3. إرسال قالب السؤال للقروب
+        await send_quiz_question(chat_id, q, i+1, len(questions), {
+            'owner_name': owner_name, 
+            'mode': quiz_data['mode'], 
+            'time_limit': quiz_data['time_limit'], 
+            'cat_name': cat_name
         })
-
-        # 🟢 [3] محرك الوقت والتلميح
-        t_limit = int(quiz_data.get('time_limit', 15))
+        
+        # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
         start_time = time.time()
+        t_limit = int(quiz_data.get('time_limit', 15))
+        h_msg = None 
         
         while time.time() - start_time < t_limit:
-            if not active_quizzes.get(chat_id, {}).get('active', False): break # توقف لو حد جاوب
+            if not active_quizzes.get(chat_id) or not active_quizzes[chat_id]['active']:
+                break
             
-            # التلميح الذكي عند منتصف الوقت
-            if quiz_data.get('smart_hint') and (time.time() - start_time) >= (t_limit / 2):
-                if not active_quizzes[chat_id]['hint_sent']:
-                    hint = await generate_smart_hint(ans)
-                    await bot.send_message(chat_id, f"💡 تلميح: <code>{hint}</code>", parse_mode="HTML")
-                    active_quizzes[chat_id]['hint_sent'] = True
+            if quiz_data.get('smart_hint') and not active_quizzes[chat_id]['hint_sent']:
+                if (time.time() - start_time) >= (t_limit / 2):
+                    try:
+                        hint_text = await generate_smart_hint(ans)
+                        h_msg = await bot.send_message(chat_id, hint_text, parse_mode="HTML")
+                        active_quizzes[chat_id]['hint_sent'] = True
+                    except Exception as e:
+                        logging.error(f"⚠️ خطأ في التلميح: {e}")
+
             await asyncio.sleep(0.5)
 
-        # 🟢 [4] إغلاق السؤال وحساب نقاط المتفوقين
-        active_quizzes[chat_id]['active'] = False
-        current_winners = active_quizzes[chat_id].get('winners', [])
+        if h_msg:
+            asyncio.create_task(delete_after(h_msg, 0))
+
+        # 5. إنهاء السؤال وحساب النقاط
+        if chat_id in active_quizzes:
+            active_quizzes[chat_id]['active'] = False
+            for w in active_quizzes[chat_id]['winners']:
+                uid = w['id']
+                if uid not in overall_scores: 
+                    overall_scores[uid] = {"name": w['name'], "points": 0}
+                overall_scores[uid]['points'] += 10
         
-        for w in current_winners:
-            uid = w['id']
-            if uid not in overall_scores: overall_scores[uid] = {"name": w['name'], "points": 0}
-            overall_scores[uid]['points'] += 10
-
-        # 🟢 [5] عرض لوحة المبدعين اللحظية (النتائج بعد كل سؤال)
-        await send_creative_results(chat_id, ans, current_winners, {chat_id: overall_scores}, is_public=False)
+            # 6. عرض لوحة المبدعين اللحظية
+            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
         
-        # 🟢 [6] العداد التنازلي المطور (فقط إذا كان هناك سؤال تالٍ)
-        if i < total_q - 1:
-            await run_internal_countdown(chat_id)
-
-    # 🏁 [7] ختام المسابقة: لوحة الشرف النهائية + ترحيل لـ Supabase
-    if overall_scores:
-        await send_final_results(chat_id, overall_scores, total_q, is_public=False)
-        await sync_points_to_db({chat_id: overall_scores}, is_public=False)
-    else:
-        await bot.send_message(chat_id, "🏁 **انتهت المسابقة!**\nللأسف لم يسجل أحد أي نقاط هذه المرة. حظاً أوفر! 🌹")
-
-# --- دالة العداد المنظمة (خارج المحرك لتقليل الزحمة) ---
-async def run_internal_countdown(chat_id):
-    """العداد التنازلي بتنسيق ياسر الفخم"""
-    icons = {5: "🔴", 3: "🟡", 1: "🟢"}
-    nums = {5: "5️⃣", 3: "3️⃣", 1: "1️⃣"}
-    try:
-        m = await bot.send_message(chat_id, f"{icons[5]} استعدوا.. السؤال التالي يبدأ بعد {nums[5]} ثواني...")
-        for sec in [3, 1]:
+        # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
+        if i < len(questions) - 1:
+            icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
+            try:
+                countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
+                
+                # سنقوم بالتحديث كل ثانية ونصف أو ثانيتين لتقليل الضغط
+                for count in range(4, 0, -2): # تقليل عدد التحديثات (تحديث كل ثانيتين)
+                    await asyncio.sleep(2)
+                    icon = icons[count] if count < len(icons) else "⚪"
+                    try:
+                        await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
+                    except Exception as e:
+                        logging.warning(f"Flood avoidance: {e}")
+                        break # توقف عن التحديث إذا ضغط التليجرام
+                
+                await asyncio.sleep(1.5)
+                await countdown_msg.delete()
+            except Exception as e:
+                logging.error(f"Countdown Error: {e}")
+        else:
             await asyncio.sleep(2)
-            await m.edit_text(f"{icons[sec]} استعدوا.. السؤال التالي يبدأ بعد {nums[sec]} ثواني...")
-        await asyncio.sleep(1); await m.delete()
-    except: pass
-        
-# 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
+    # 7. إعلان لوحة الشرف النهائية
+    await send_final_results(chat_id, overall_scores, len(questions
+    
 # ==========================================
-
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
 async def announce_quiz_type(chat_id, quiz_data, engine_type):
     """إعلان تفاصيل المسابقة بناءً على عمود is_public الحقيقي"""
