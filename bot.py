@@ -2072,57 +2072,39 @@ def is_answer_correct(user_msg, correct_ans):
         return True
 
     return False
-
 # ---- رصد الإجابات (Check Answers) ----
 @dp.message_handler(lambda m: not m.text.startswith('/'))
 async def check_ans(m: types.Message):
     cid = m.chat.id
     uid = m.from_user.id
-    
-    # 1. التأكد أن هناك مسابقة قائمة في هذه المجموعة
+
+    # 1. هل فيه مسابقة شغالة أصلاً في هذه المجموعة؟
     if cid in active_quizzes and active_quizzes[cid]['active']:
         
-        user_raw = m.text.strip()
-        correct_raw = active_quizzes[cid]['ans']
-        
-        # 2. استخدام المنطق الذكي للتحقق من الإجابة
-        if is_answer_correct(user_raw, correct_raw):
+        user_answer = m.text.strip()
+        correct_answer = active_quizzes[cid]['ans']
+
+        # 2. هل الإجابة صحيحة؟ (نستخدم المنطق الذكي اللي صنعناه)
+        if is_answer_correct(user_answer, correct_answer):
             
-            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-            if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
+            # 3. هل هذا الشخص "أول مرة" يجاوب على هذا السؤال؟ (عشان ما يكرر نقاطه)
+            if not any(winner['id'] == uid for winner in active_quizzes[cid]['winners']):
                 
-                # تسجيل الفائز في ذاكرة هذه المجموعة
+                # ✅ سجل الفائز في "المخزن المؤقت" للسؤال الحالي
                 active_quizzes[cid]['winners'].append({
                     "name": m.from_user.first_name, 
                     "id": uid,
                     "time": time.time() - active_quizzes[cid]['start_time']
                 })
-                
-                # 🔥 [الإصلاح الجوهري]: إذا كان وضع المسابقة "السرعة ⚡"
-                if active_quizzes[cid].get('mode') == 'السرعة ⚡':
-                    
-                    # الفكرة: نبحث هل هذه المجموعة جزء من إذاعة عامة (Multi-Chat)؟
-                    # سنجعل السؤال يغلق في "كل" المجموعات المرتبطة
-                    target_chats = []
-                    
-                    # إذا كان البوت في حالة إذاعة عامة، نغلق السؤال في كل الـ chat_ids المشاركة
-                    # ملاحظة: سنفترض أننا خزنّا قائمة المجموعات المشاركة في مكان ما 
-                    # أو ببساطة نغلق السؤال في كل المجموعات التي تملك نفس الإجابة الآن
-                    for group_id, quiz in active_quizzes.items():
-                        if quiz.get('active') and quiz.get('ans') == correct_raw:
-                            quiz['active'] = False
-        
-        else:
-            # ❌ تسجيل الإجابة الخاطئة (لعرضها في قالب send_creative_results)
-            if 'wrong_answers' not in active_quizzes[cid]:
-                active_quizzes[cid]['wrong_answers'] = []
-            
-            user_name = m.from_user.first_name
-            if user_name not in active_quizzes[cid]['wrong_answers']:
-                # نتأكد أنه لم يجب صح أولاً
-                if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
-                    active_quizzes[cid]['wrong_answers'].append(user_name)
 
+                # 4. [نقطة التحول للعامة]: لو المسابقة "سرعة ⚡"
+                if active_quizzes[cid].get('mode') == 'السرعة ⚡':
+                    # "الأعمى" يمد يده ويقفل السؤال في كل المجموعات المرتبطة
+                    for group_id in active_quizzes:
+                        # إذا كانت المجموعة عندها نفس الإجابة (يعني تبع الإذاعة)
+                        if active_quizzes[group_id].get('ans') == correct_answer:
+                            active_quizzes[group_id]['active'] = False
+                            
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
 class AdminStates(StatesGroup):
