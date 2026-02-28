@@ -1955,29 +1955,6 @@ def is_global_answer_correct(user_msg, correct_ans):
     return False
 
 # ==========================================
-# 📡 2. رادار الرصد العالمي (Monitor)
-# ==========================================
-@dp.message_handler(lambda m: not m.text.startswith('/'))
-async def global_answer_monitor(m: types.Message):
-    # التأكد أن الإذاعة نشطة وأن القروب من ضمن قائمة المشاركين
-    if global_quiz.get("active") and m.chat.id in global_quiz.get("participants", []):
-        
-        user_raw = m.text
-        correct_raw = global_quiz.get("ans")
-
-        # تشغيل عقل التحقق الذكي (ياسر المطور)
-        if is_global_answer_correct(user_raw, correct_raw):
-            
-            # 🛑 إيقاف المسابقة عالمياً فوراً
-            global_quiz["active"] = False
-            global_quiz["winner_id"] = m.from_user.id
-            global_quiz["winner_name"] = m.from_user.first_name
-            
-            # رد فوري في المجموعة التي فاز فيها العضو
-            await m.reply(f"🎯 **كفو يا بطل!**\nإجابتك صحيحة ({user_raw}) وخظفت النقطة عالمياً.. 🚀")
-            return
-
-# ==========================================
 # 🛰️ 3. المحرك الموحد للإذاعة (The Master Engine)
 # ==========================================
 async def engine_global_broadcast(groups_list, quiz_data, owner_name):
