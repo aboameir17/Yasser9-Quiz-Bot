@@ -687,8 +687,15 @@ async def btn_add_cat(c: types.CallbackQuery):
     # تحديث الرسالة لطلب الاسم لمنع التراكم
     await c.message.edit_text("📝 **اكتب اسم القسم الجديد الآن:**", reply_markup=kb, parse_mode="Markdown")
 
+# --- [ الدالة 3: حفظ اسم القسم الجديد ] ---
 @dp.message_handler(state=Form.waiting_for_cat_name)
 async def save_cat(message: types.Message, state: FSMContext):
+    # حماية: إذا أرسل المستخدم أمراً بالخطأ (يبدأ بـ /) نلغي الحالة
+    if message.text.startswith('/'):
+        await state.finish()
+        await message.reply("⚠️ تم إلغاء العملية لأنك أرسلت أمراً. حاول مجدداً من لوحة التحكم.")
+        return
+
     cat_name = message.text.strip()
     user_id = message.from_user.id
     
@@ -698,9 +705,8 @@ async def save_cat(message: types.Message, state: FSMContext):
             "created_by": str(user_id)
         }).execute()
         
-        await state.finish()
+        await state.finish() # إنهاء الحالة بنجاح
         
-        # عند النجاح، نرسل رسالة جديدة كإشعار ثم نعطيه زر العودة الذي يقوم بالتعديل
         kb = InlineKeyboardMarkup().add(
             InlineKeyboardButton("🔙 العودة للأقسام", callback_data=f"custom_add_{user_id}")
         )
@@ -708,9 +714,11 @@ async def save_cat(message: types.Message, state: FSMContext):
 
     except Exception as e:
         await state.finish()
+        logging.error(f"Save Category Error: {e}")
         kb = InlineKeyboardMarkup().add(InlineKeyboardButton("⬅️ الرجوع", callback_data=f"custom_add_{user_id}"))
         await message.answer("⚠️ حدث خطأ أو الاسم مكرر. حاول مرة أخرى.", reply_markup=kb)
-
+    
+    return # إنهاء المهمة
 # --- 1. نافذة إعدادات القسم (عند الضغط على اسمه) ---
 @dp.callback_query_handler(lambda c: c.data.startswith('manage_questions_'))
 async def manage_questions_window(c: types.CallbackQuery):
