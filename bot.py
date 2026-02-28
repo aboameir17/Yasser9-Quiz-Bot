@@ -1993,6 +1993,75 @@ async def run_global_broadcast_logic(questions, quiz_data, owner_name, engine_ty
             await asyncio.gather(*final_tasks, return_exceptions=True)
             
 # ==========================================
+# 1️⃣ نظام رصد الإجابات الذكي (ياسر المطور)
+# ==========================================
+def is_answer_correct(user_msg, correct_ans):
+    if not user_msg or not correct_ans: return False
+
+    def clean_logic(text):
+        # 1. تنظيف أساسي (حذف المسافات وتحويل لصغير)
+        text = text.strip().lower()
+        # 2. توحيد الألفات (أإآ -> ا)
+        text = re.sub(r'[أإآ]', 'ا', text)
+        # 3. توحيد التاء المربوطة (ة -> ه)
+        text = re.sub(r'ة', 'ه', text)
+        # 4. توحيد الياء (ى -> ي)
+        text = re.sub(r'ى', 'ي', text)
+        # 5. معالجة الواو الزائدة (مثل عمرو -> عمر)
+        if text.endswith('و') and len(text) > 3:
+            text = text[:-1]
+        # 6. حذف المسافات الزائدة بين الكلمات
+        text = ' '.join(text.split())
+        return text
+
+    user_clean = clean_logic(user_msg)
+    correct_clean = clean_logic(correct_ans)
+
+    # 1. فحص التطابق التام
+    if user_clean == correct_clean:
+        return True
+
+    # 2. فحص الاحتواء (كلمة من إجابة طويلة)
+    if len(user_clean) > 3 and (user_clean in correct_clean or correct_clean in user_clean):
+        return True
+
+    # 3. فحص نسبة التشابه (تجاوز الأخطاء الإملائية 80%)
+    similarity = difflib.SequenceMatcher(None, user_clean, correct_clean).ratio()
+    if similarity >= 0.80:
+        return True
+
+    return False
+
+# ==========================================
+# 2️⃣ رادار رصد الكلمات (الأولوية للإذاعة العامة) 🛰️
+# ==========================================
+@dp.message_handler(lambda m: global_quiz.get("active") and not m.text.startswith('/'))
+async def check_global_broadcast_ans(m: types.Message):
+    """هذا الرادار يطبق 'ميزان العدل' أولاً على البث العام"""
+    cid = m.chat.id
+    
+    # التأكد أن المجموعة مشتركة في الإذاعة
+    if cid not in global_quiz.get("participants", []):
+        return
+
+    # 🔥 هنا مربط الفرس: استخدام دالة ياسر المطور (is_answer_correct) أولاً
+    if is_answer_correct(m.text, global_quiz.get("ans")):
+        
+        # إذا كانت الإجابة صحيحة وفقاً للميزان، نغلق السؤال فوراً
+        if global_quiz["active"]:
+            global_quiz["active"] = False 
+            
+            try: await m.delete() # حذف إجابة بطل الكوكب
+            except: pass
+            
+            # تسجيل بيانات الفائز العالمي
+            global_quiz.update({
+                "winner_id": m.from_user.id,
+                "winner_name": m.from_user.first_name,
+                "winner_group": m.chat.title or "قروب عام"
+            })
+            # (سيقوم المحرك بإرسال قالب النتائج الموحد تلقائياً)
+# ==========================================
 # [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
 async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_type):
