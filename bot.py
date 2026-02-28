@@ -1726,6 +1726,53 @@ async def engine_user_questions(chat_id, quiz_data, owner_name):
         logging.error(f"User Engine Error: {e}")
 
 
+# --- [3. محرك إذاعة الكوكب (بث عام) ] ---
+async def engine_broadcast_global(quiz_data, owner_name):
+    """
+    محرك الإذاعة: يجلب الأسئلة من المصدر المختار (بوت أو أعضاء) 
+    ويطلقها في جميع المجموعات المشتركة في الرادار العالمي.
+    """
+    try:
+        # 1. تحديد المصدر (بوت أو أعضاء)
+        is_bot = quiz_data.get('is_bot_quiz', False)
+        table_name = "bot_questions" if is_bot else "questions"
+        cat_column = "bot_category_id" if is_bot else "category_id"
+        
+        # 2. معالجة الأقسام (نفس منطقك المطور في المحركات السابقة)
+        raw_cats = quiz_data.get('cats', [])
+        if isinstance(raw_cats, str):
+            try: cat_ids_list = json.loads(raw_cats)
+            except: cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+        else: cat_ids_list = raw_cats
+
+        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
+        if not cat_ids:
+            return logging.error("⚠️ خطأ الإذاعة: لم يتم العثور على أقسام.")
+
+        # 3. جلب الأسئلة من Supabase
+        if is_bot:
+            res = supabase.table(table_name).select("*").in_(cat_column, cat_ids).execute()
+        else:
+            res = supabase.table(table_name).select("*, categories(name)").in_(cat_column, cat_ids).execute()
+
+        if not res.data:
+            return logging.error("⚠️ خطأ الإذاعة: قاعدة البيانات فارغة لهذا القسم.")
+
+        # 4. اختيار عدد الأسئلة المطلوبة عشوائياً
+        questions_pool = res.data
+        random.shuffle(questions_pool)
+        count = int(quiz_data.get('questions_count', 10))
+        selected_questions = questions_pool[:count]
+
+        # 🔥 الخطوة الحاسمة: إرسال الأسئلة لمحرك الإذاعة العالمي وليس المحلي
+        # نمرر "bot" أو "user" ليعرف المحرك كيفية استخراج الإجابة
+        engine_type = "bot" if is_bot else "user"
+        
+        await run_global_broadcast_logic(selected_questions, quiz_data, owner_name, engine_type)
+
+    except Exception as e:
+        logging.error(f"Global Broadcast Engine Error: {e}")
+        
 # --- [ محرك التلميحات الملكي المطور: 3 قلوب + ذاكرة سحابية ✨ ] ---
 
 current_key_index = 0 # متغير تدوير المفاتيح
