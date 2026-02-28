@@ -1862,6 +1862,92 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
             await send_final_results(chat_id, overall_scores, len(questions))
     
 # ==========================================
+# 🛰️ GLOBAL BROADCAST ENGINE (المحرك الموحد الشامل)
+# ==========================================
+
+async def engine_global_broadcast(groups_list, quiz_data, owner_name):
+    try:
+        # 1. تجهيز الأقسام (منطق ياسر المعتمد)
+        raw_cats = quiz_data.get('cats', [])
+        if isinstance(raw_cats, str):
+            try: cat_ids_list = json.loads(raw_cats)
+            except: cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+        else: cat_ids_list = raw_cats
+
+        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
+        if not cat_ids: return
+
+        # 2. تحديد مصدر الأسئلة (بوت أو أعضاء)
+        is_bot = quiz_data.get("is_bot_quiz", False)
+        if is_bot:
+            res = supabase.table("bot_questions").select("*").in_("bot_category_id", cat_ids).execute()
+        else:
+            res = supabase.table("questions").select("*, categories(name)").in_("category_id", cat_ids).execute()
+
+        if not res.data: return
+
+        # 3. 🔥 السر: خلط عشوائي واختيار العدد (مرة واحدة للكل)
+        questions_pool = res.data
+        random.shuffle(questions_pool)
+        count = int(quiz_data.get('questions_count', 10))
+        selected_questions = questions_pool[:count]
+
+        # 4. تصفير النقاط العالمية قبل البدء
+        global overall_global_scores
+        overall_global_scores = {}
+
+        # 5. دورة الأسئلة الموحدة
+        for i, q in enumerate(selected_questions):
+            # استخراج الإجابة والقسم
+            ans = str(q.get('correct_answer') or q.get('answer_text') or q.get('answer') or "").strip()
+            cat_name = q.get('category') or (q['categories']['name'] if q.get('categories') else "عام")
+
+            # 🛑 تفعيل الرادار العالمي (صيد أول إجابة في الكوكب)
+            global_quiz.update({
+                "active": True, "ans": ans, "winner_id": None, 
+                "winner_name": "", "start_time": time.time(),
+                "participants": groups_list # ربط المجموعات بالرادار
+            })
+
+            # بث السؤال لكل المجموعات (باستخدام قالبك المطور)
+            send_tasks = [send_quiz_question(cid, q, i+1, len(selected_questions), {
+                'owner_name': owner_name, 'mode': quiz_data['mode'], 
+                'time_limit': quiz_data['time_limit'], 'cat_name': cat_name
+            }) for cid in groups_list]
+            await asyncio.gather(*send_tasks, return_exceptions=True)
+
+            # محرك الوقت الذكي (ينتظر الإجابة أو انتهاء الوقت)
+            start_time = time.time()
+            t_limit = int(quiz_data.get('time_limit', 15))
+            while time.time() - start_time < t_limit:
+                if not global_quiz.get('active'): break # توقف لو أحد جاوب صح
+                await asyncio.sleep(0.5)
+
+            # 6. معالجة النتيجة وعرض لوحة المبدعين
+            global_quiz['active'] = False
+            current_winners = []
+            if global_quiz.get('winner_id'):
+                uid = global_quiz['winner_id']
+                uname = global_quiz['winner_name']
+                if uid not in overall_global_scores: overall_global_scores[uid] = {"name": uname, "points": 0}
+                overall_global_scores[uid]['points'] += 10 # إضافة النقاط
+                current_winners = [{"name": uname, "id": uid}]
+
+            # عرض النتائج في كل المجموعات
+            res_tasks = [send_creative_results(cid, ans, current_winners, overall_global_scores) for cid in groups_list]
+            await asyncio.gather(*res_tasks, return_exceptions=True)
+
+            # مهلة 5 ثواني قبل السؤال التالي (أو العد التنازلي 🔴🟠🟡)
+            if i < len(selected_questions) - 1:
+                await asyncio.sleep(5)
+
+        # 7. إعلان لوحة الشرف النهائية 🏆
+        final_tasks = [send_final_results(cid, overall_global_scores, len(selected_questions)) for cid in groups_list]
+        await asyncio.gather(*final_tasks, return_exceptions=True)
+
+    except Exception as e:
+        logging.error(f"Global Engine Error: {e}")
+# ==========================================
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
 async def announce_quiz_type(chat_id, quiz_data, engine_type):
     """إعلان تفاصيل المسابقة بناءً على عمود is_public الحقيقي"""
