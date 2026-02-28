@@ -1902,14 +1902,17 @@ async def run_global_broadcast_logic(questions, quiz_data, owner_name, engine_ty
     overall_global_scores = {} # تصفير النقاط عند بداية الإذاعة
 
     for i, q in enumerate(questions):
-        # 1. استخراج الإجابة
+        # 1. استخراج الإجابة والنص حسب نوع المصدر
         if engine_type == "bot":
             ans = str(q.get('correct_answer') or "").strip()
             cat_name = q.get('category') or "بوت"
-        else:
+        elif engine_type == "user":
             ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
             cat_name = q['categories']['name'] if q.get('categories') else "عام"
-
+        else:
+            ans = str(q.get('correct_answer') or q.get('ans') or "").strip()
+            cat_name = "قسم خاص 🔒"
+            
         # 2. تجهيز الرادار العالمي
         global_quiz.update({
             "active": True, "ans": ans, "winner_id": None, 
