@@ -2495,27 +2495,29 @@ async def handle_accept_quiz(c: types.CallbackQuery):
 # ==========================================
 # 📡 الرادار الموحد (الإذاعة العالمية + المسابقات المحلية)
 # ==========================================
-@dp.message_handler(lambda m: m.text and not m.text.startswith('/'))
+@dp.message_handler(lambda m: m.text and not m.text.startswith('/'), chat_type=[types.ChatType.PRIVATE, types.ChatType.GROUP, types.ChatType.SUPERGROUP])
 async def unified_answer_monitor(m: types.Message):
-    global global_quiz  # لاستدعاء بيانات الإذاعة
+    global global_quiz, active_quizzes
+    
+    user_raw = m.text
+    # ✅ السطر المصحح (يجب أن يكون داخل الدالة ومزاح لليمين)
+    print(f"DEBUG: رسالة من {m.chat.type} - النص: {user_raw}")
+
     cid = m.chat.id
     uid = m.from_user.id
-    user_raw = m.text
     uname = m.from_user.first_name
 
-    # 🌍 [1] فحص الإذاعة العالمية (إذا كانت شغالة والقروب مشارك)
+    # 🌍 [1] فحص الإذاعة العالمية
     if global_quiz.get("active") and cid in global_quiz.get("participants", []):
         correct_raw = global_quiz.get("ans")
-        
-        # استخدام عقل ياسر المطور للتحقق (التشكيل، الأرقام، الترتيب)
         if is_global_answer_correct(user_raw, correct_raw):
-            global_quiz["active"] = False # إيقاف فوري عالمياً
+            global_quiz["active"] = False 
             global_quiz["winner_id"] = uid
             global_quiz["winner_name"] = uname
-            await m.reply(f"🎯 **كفو يا بطل!**\nإجابتك صحيحة ({user_raw}) وخظفت النقطة عالمياً.. 🚀")
-            return # إنهاء لعدم التداخل مع المحلي
+            await m.reply(f"🎯 **كفو يا بطل!**\nإجابتك صحيحة وخظفت النقطة عالمياً.. 🚀")
+            return 
 
-    # 🏠 [2] فحص المسابقة المحلية (الوضع العادي)
+    # 🏠 [2] فحص المسابقة المحلية
     if cid in active_quizzes and active_quizzes[cid]['active']:
         correct_local = active_quizzes[cid]['ans']
         if is_global_answer_correct(user_raw, correct_local):
@@ -2524,7 +2526,6 @@ async def unified_answer_monitor(m: types.Message):
                 if active_quizzes[cid]['mode'] == 'السرعة ⚡':
                     active_quizzes[cid]['active'] = False
                 await m.reply(f"✅ إجابة صحيحة يا {uname}!")
-# ==========================================
 # ==========================================
 # 5. نهاية الملف: ضمان التشغيل 24/7 (Keep-Alive)
 # ==========================================
@@ -2535,26 +2536,19 @@ async def handle_ping(request):
     return web.Response(text="Bot is Active and Running! 🚀")
 
 if __name__ == '__main__':
-    # 1. إعداد سيرفر ويب صغير في الخلفية للرد على طلبات الـ HTTP
+    # إعداد سيرفر ويب بسيط لـ Render
     app = web.Application()
     app.router.add_get('/', handle_ping)
     
-    loop = asyncio.get_event_loop()
     runner = web.AppRunner(app)
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(runner.setup())
     
-    # 2. تحديد المنفذ (Port): Render يستخدم غالباً 10000، و Koyeb يستخدم ما يحدده النظام
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
+    loop.run_until_complete(site.start())
     
-    # تشغيل السيرفر كـ "مهمة" جانبية حتى لا يعطل البوت
-    loop.create_task(site.start())
     print(f"✅ Keep-alive server started on port {port}")
-
-    # 3. إعدادات السجلات والتشغيل النهائي للبوت
-    logging.basicConfig(level=logging.INFO)
     
-    print(f"DEBUG: رسالة من {m.chat.type} - النص: {user_raw}")
-    # بدء استقبال الرسائل (Polling) مع تخطي التحديثات القديمة
+    # تشغيل البوت
     executor.start_polling(dp, skip_updates=True)
-    
