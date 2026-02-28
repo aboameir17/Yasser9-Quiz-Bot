@@ -68,6 +68,51 @@ global_quiz = {
 # قائمة لتخزين رسائل السؤال في كل القروبات (عشان نحذفها بعدين بلمحة بصر)
 global_question_messages = {} # القالب: {chat_id: message_id}
 # ==========================================
+# [2] محرك إطلاق الصاروخ العالمي 🚀🌍
+# ==========================================
+async def launch_global_quiz(questions_list):
+    """
+    هذه الدالة تختار سؤالاً واحداً وترسله لكل الكواكب في وقت واحد!
+    """
+    if not global_quiz["participants"]:
+        print("⚠️ لا توجد مجموعات مشتركة في الإذاعة حالياً!")
+        return
+
+    # 1. اختيار سؤال وتجهيز الإجابة بميزان العدل ⚖️
+    q = random.choice(questions_list)
+    ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
+    
+    # 2. تصفير العداد وتحديث الرادار المركزي
+    global_quiz.update({
+        "active": True,
+        "question": q.get('question') or q.get('text'),
+        "answer": normalize(ans), # ميزان العدل الخاص بنا
+        "start_time": time.time(),
+        "winner_id": None
+    })
+
+    # 3. تجهيز مهام الإرسال المتوازي (التشغيل التوربيني ⚡)
+    q_text = (
+        f"🌍 **【 سـؤال الإذاعـة العالـمي 】**\n\n"
+        f"❓ {global_quiz['question']}\n\n"
+        f"⚡ أسرع إجابة صحيحة تفوز على مستوى الكوكب!"
+    )
+
+    tasks = []
+    for chat_id in global_quiz["participants"]:
+        tasks.append(bot.send_message(chat_id, q_text, parse_mode="Markdown"))
+
+    # 4. إطلاق السؤال وحفظ "آيدي الرسائل" عشان التنظيف الملكي 🧹
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    for i, res in enumerate(results):
+        if not isinstance(res, Exception):
+            # حفظ مكان كل رسالة في كل قروب للحذف لاحقاً
+            chat_id = global_quiz["participants"][i]
+            global_question_messages[chat_id] = res.message_id
+
+    print(f"🚀 تم إطلاق السؤال إلى {len(global_quiz['participants'])} مجموعة بنجاح!")
+# ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
 async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
@@ -107,7 +152,6 @@ async def send_final_results(chat_id, overall_scores, correct_count):
     msg += "تهانينا للفائزين وحظاً أوفر لمن لم يحالفه الحظ! ❤️"
     await bot.send_message(chat_id, msg, parse_mode="HTML")
 
-
 # ==========================================
 # 1. كيبوردات التحكم الرئيسية (Main Keyboards)
 # ==========================================
@@ -145,7 +189,6 @@ def get_categories_kb(user_id):
     kb.add(InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_main_{user_id}"))
     
     return kb
-
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
