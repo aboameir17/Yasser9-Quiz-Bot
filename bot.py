@@ -532,27 +532,33 @@ async def activate_group_hub(message: types.Message):
 # ==========================================
 @dp.message_handler(lambda m: m.text == "تحكم")
 async def control_panel(message: types.Message):
+    # 💡 حماية: إذا كانت الإذاعة العالمية شغالة، اترك الكلمة تمر للرادار
+    global global_quiz
+    if global_quiz.get("active"):
+        return 
+
     user_id = message.from_user.id
     group_id = message.chat.id
 
-    # في المجموعات، نتحقق من حالة التفعيل
+    # في المجموعات: نتحقق من التفعيل والصلاحيات
     if message.chat.type != 'private':
-        # إذا لم يكن المطور، نتحقق من حالة القروب
         if user_id != ADMIN_ID:
             status = await get_group_status(group_id)
             if status != "active":
-                return await message.reply("⚠️ <b>هذا القروب غير مفعل.</b>\nيجب أن يوافق المطور على طلب التفعيل أولاً.", parse_mode="HTML")
+                await message.reply("⚠️ <b>هذا القروب غير مفعل.</b>\nيجب تفعيله أولاً.", parse_mode="HTML")
+                return
             
             # فحص هل المستخدم مشرف
             member = await bot.get_chat_member(group_id, user_id)
             if not (member.is_chat_admin() or member.is_chat_creator()):
-                return await message.reply("⚠️ لوحة التحكم مخصصة للمشرفين فقط.")
+                await message.reply("⚠️ لوحة التحكم مخصصة للمشرفين فقط.")
+                return
 
-    # إذا كان المطور أو قروب مفعل، تظهر اللوحة
-    txt = (f"👋 أهلاً بك في لوحة الإعدادات\n"
-           f"👑 المطور: <b>{OWNER_USERNAME}</b>")
+    # --- [ هنا يكمل كود عرض الأزرار الخاص بك ] ---
+    # مثال: kb = InlineKeyboardMarkup()... 
+    # await message.reply("⚙️ أهلاً بك في لوحة التحكم:", reply_markup=kb)
     
-    await message.answer(txt, reply_markup=get_main_control_kb(user_id), parse_mode="HTML")
+    return # إنهاء المهمة
 
 # التعديل في السطر 330 (أضفنا close_bot_)
 @dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_', 'back_')), state="*")
