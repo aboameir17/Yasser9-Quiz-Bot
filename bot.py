@@ -323,18 +323,17 @@ async def get_group_status(chat_id):
 
 
 async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
-    """محرك الإذاعة العامة - إرسال الدعوات بتنسيق ياسر المطور 📊"""
-    # 1. جلب بيانات المسابقة بأمان
+    """محرك الإذاعة العامة - نسخة ياسر المطور 📊"""
+    # 1. جلب بيانات المسابقة
     res_q = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
     q = res_q.data
     if not q: return await c.answer("❌ تعذر جلب بيانات المسابقة")
 
     # 2. جلب المجموعات المفعلة
     groups_res = supabase.table("groups_hub").select("group_id").eq("status", "active").execute()
-    if not groups_res.data:
-        return await c.answer("⚠️ لا توجد مجموعات مفعلة حالياً.", show_alert=True)
+    if not groups_res.data: return await c.answer("⚠️ لا توجد مجموعات مفعلة.")
 
-    # 3. تجهيز نص الإعلان (نفس تنسيقك)
+    # 3. إرسال الدعوات (تنسيق ياسر)
     source_text = "أسئلة البوت الذكية 🤖" if q.get('is_bot_quiz') else "أسئلة المستخدم الخاصة 👤"
     broadcast_text = (
         f"📢 **إعلان: مسابقة عالمية منطلقة الآن!** 🌐\n"
@@ -349,9 +348,7 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
         f"⏳ **الانطلاق خلال: 60 ثانية**"
     )
     
-    kb = InlineKeyboardMarkup().add(
-        InlineKeyboardButton("✅ قبول التحدي والانضمام", callback_data=f"accept_q_{quiz_id}_{owner_id}")
-    )
+    kb = InlineKeyboardMarkup().add(InlineKeyboardButton("✅ قبول التحدي", callback_data=f"accept_q_{quiz_id}_{owner_id}"))
 
     invitation_messages = []
     for g in groups_res.data:
@@ -360,80 +357,73 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
             invitation_messages.append((g['group_id'], msg.message_id))
         except: continue
     
-    await c.answer(f"🚀 تم بث الدعوة لـ {len(invitation_messages)} مجموعة!", show_alert=True)
+    await c.answer(f"🚀 تم البث لـ {len(invitation_messages)} مجموعة!")
 
-    # 4. انتظار تجميع المشاركين (بدون تجميد البوت بالكامل)
+    # 4. فترة التجميع (60 ثانية)
     await asyncio.sleep(60)
 
-    # 5. 🔥 [الإصلاح]: استدعاء العد التنازلي يدوياً وتمرير البيانات له
-    # قبل المسح من قاعدة البيانات، نتأكد من جلب المشاركين
+    # 5. 🔥 جلب المشاركين الفعليين قبل البدء
     participants_res = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz_id).execute()
-    
     if not participants_res.data:
-        # إذا لم يقبل أحد التحدي، نحذف رسائل الدعوة ونعتذر
-        for chat_id, msg_id in invitation_messages:
-            try: await bot.delete_message(chat_id, msg_id)
+        # تنظيف لو مفيش حد شارك
+        for cid, mid in invitation_messages: 
+            try: await bot.delete_message(cid, mid)
             except: pass
-        return await bot.send_message(owner_id, "⚠️ تم إلغاء الإذاعة لعدم وجود مشاركين.")
+        return
 
-    # تجهيز قائمة الـ IDs العالمية
+    # تخزين المشاركين في العقل العالمي
     global_quiz["participants"] = [p['chat_id'] for p in participants_res.data]
 
-    # حذف رسائل الإعلان فوراً
+    # حذف رسائل الإعلان
     for chat_id, msg_id in invitation_messages:
         try: asyncio.create_task(bot.delete_message(chat_id, msg_id))
         except: pass
 
-    # 🚀 انطلاق العد التنازلي الآن
+    # 🚀 انطلاق العد التنازلي ثم المحرك
     await launch_global_countdown(quiz_id, q, global_quiz["participants"])
 
+# ------------------------------------------
+# ⏱️ محرك العد التنازلي المعدل
+# ------------------------------------------
 async def launch_global_countdown(quiz_id, q_data, participant_ids):
-    """محرك العد التنازلي وتدشين الإذاعة الموحدة"""
     group_messages = {}
     
-    # 1. إرسال رسالة "استعدوا"
+    # رسالة الاستعداد
     tasks = [bot.send_message(cid, "⏳ **استعدوا.. جاري تحضير البث العالمي!**") for cid in participant_ids]
     sent_messages = await asyncio.gather(*tasks, return_exceptions=True)
-    
     for msg in sent_messages:
-        if isinstance(msg, types.Message):
-            group_messages[msg.chat.id] = msg.message_id
+        if isinstance(msg, types.Message): group_messages[msg.chat.id] = msg.message_id
 
-    # 2. دورة العد التنازلي (10 ثواني)
+    # العد التنازلي بالأيقونات
     timer_icons = ["🔟", "9️⃣", "8️⃣", "7️⃣", "6️⃣", "5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣", "🚀"]
     for icon in timer_icons:
-        text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق! أظهروا لنا قوتكم..**"
+        text = f"⏳ تبدأ خلال: {icon}" if icon != "🚀" else "🔥 **انطـــلاق!**"
         edit_tasks = [bot.edit_message_text(text, cid, mid) for cid, mid in group_messages.items()]
         await asyncio.gather(*edit_tasks, return_exceptions=True)
         await asyncio.sleep(1)
 
-    # 3. تنظيف رسائل العداد
+    # حذف رسائل العداد
     for cid, mid in group_messages.items():
         try: asyncio.create_task(bot.delete_message(cid, mid))
         except: pass
 
-    # 4. 🔥 [هنا مربط الفرس]: جلب الأسئلة أولاً ثم تشغيل المحرك
-    # نحدد نوع المحرك (بوت أو مستخدم)
-    engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
-    
-    # جلب الأسئلة من جدول الأسئلة بناءً على الـ quiz_id
+    # 6. 🔥 استدعاء المحرك الصافي (الذي يذيع الأسئلة)
+    # نجلب الأسئلة أولاً لضمان وجود وقود للمحرك
     questions_res = supabase.table("quiz_questions").select("*").eq("quiz_id", quiz_id).execute()
     questions = questions_res.data
-
-    if not questions:
-        # إذا مافي أسئلة، نبلغهم ونقفل
-        for cid in participant_ids:
-            await bot.send_message(cid, "⚠️ خطأ: لم يتم العثور على أسئلة لهذه المسابقة.")
-        return
-
-    # 5. 🚀 تشغيل المحرك الموحد وإعطاؤه الأسئلة
-    # نستخدم asyncio.create_task عشان ما نعلق البوت
-    asyncio.create_task(run_global_broadcast_logic(
-        questions=questions, 
-        quiz_data=q_data, 
-        owner_name=q_data.get('owner_name', 'المنظم'), 
-        engine_type=engine_type
-    ))
+    
+    if questions:
+        engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
+        # استدعاء المحرك (ياسر المطور)
+        asyncio.create_task(run_global_broadcast_logic(
+            questions=questions, 
+            quiz_data=q_data, 
+            owner_name=q_data.get('owner_name', 'المنظم'), 
+            engine_type=engine_type
+        ))
+    
+    # تنظيف الجدول المؤقت
+    supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
     
 # ==========================================
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
