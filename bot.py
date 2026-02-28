@@ -475,6 +475,75 @@ class Form(StatesGroup):
     waiting_for_quiz_name = State()
 
 # ==========================================
+# [3] القاضي العالمي ونظام مكافحة الغش (aiogram) 🛡️⚖️
+# يوضع هنا لضمان "الأولوية القصوى" قبل أي رسالة أخرى ⚡
+# ==========================================
+
+@dp.message_handler(lambda message: global_quiz["active"])
+async def global_judge(message: types.Message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    
+    # 1. ميزان العدل: تنظيف الإجابة (تأكد من وجود دالة normalize عندك)
+    try:
+        user_answer = normalize(message.text)
+    except:
+        user_answer = message.text.strip().lower()
+
+    # 2. [💡 فكرتك الجهنمية: حذف الإجابة فوراً لمنع الغش]
+    try:
+        await message.delete() 
+    except Exception as e:
+        logging.error(f"⚠️ فشل حذف رسالة الغش: {e}")
+
+    # 3. التحقق من الإجابة الصحيحة
+    if global_quiz["answer"] and user_answer == global_quiz["answer"]:
+        if global_quiz["active"]:
+            global_quiz["active"] = False # إغلاق الإذاعة فوراً لمنع فوز شخصين 🔒
+            
+            # حساب سرعة الاستجابة
+            finish_time = round(time.time() - global_quiz["start_time"], 2)
+            
+            # تسجيل بيانات البطل
+            global_quiz.update({
+                "winner_id": user_id,
+                "winner_name": message.from_user.first_name,
+                "winner_group": message.chat.title or "مجموعة خاصة"
+            })
+
+            # 4. لوحة الشرف العالمية 🏆
+            victory_text = (
+                f"🏆 **【 بـطـل الكـوكـب الـيـوم 】**\n\n"
+                f"👤 الفائز: [{global_quiz['winner_name']}](tg://user?id={user_id})\n"
+                f"🏰 المجموعة: {global_quiz['winner_group']}\n"
+                f"⚡ السرعة: {finish_time} ثانية\n\n"
+                f"🎉 هاردلك لباقي المجموعات، البطل كان أسرع!"
+            )
+
+            # 5. إعلان الفوز في كل الكواكب المشتركة
+            announce_tasks = []
+            for group_id in global_quiz["participants"]:
+                announce_tasks.append(bot.send_message(group_id, victory_text, parse_mode="Markdown"))
+            
+            await asyncio.gather(*announce_tasks, return_exceptions=True)
+
+            # 6. تشغيل نظام التنظيف الملكي بعد 15 ثانية 🧹
+            asyncio.create_task(royal_cleanup_task(15))
+
+# ==========================================
+# [4] المكنسة الملكية - دالة التنظيف المساعدة 🧹
+# ==========================================
+async def royal_cleanup_task(delay):
+    await asyncio.sleep(delay)
+    cleanup_tasks = []
+    for chat_id, msg_id in global_question_messages.items():
+        cleanup_tasks.append(bot.delete_message(chat_id, msg_id))
+    
+    await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+    global_question_messages.clear()
+    print("🧹 تم تنظيف ساحة المسابقة العالمية!")
+
+# ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
