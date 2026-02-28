@@ -2554,6 +2554,7 @@ if __name__ == '__main__':
     # 3. إعدادات السجلات والتشغيل النهائي للبوت
     logging.basicConfig(level=logging.INFO)
     
+    print(f"DEBUG: رسالة من {m.chat.type} - النص: {user_raw}")
     # بدء استقبال الرسائل (Polling) مع تخطي التحديثات القديمة
     executor.start_polling(dp, skip_updates=True)
     
