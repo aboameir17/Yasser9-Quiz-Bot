@@ -1936,7 +1936,7 @@ def is_global_answer_correct(user_msg, correct_ans):
     return False
 
 # ==========================================
-# 🛰️ 3. المحرك الموحد للإذاعة (The Master Engine)
+# 🛰️ 3. المحرك الموحد للإذاعة (The Master Engine - النسخة النهائية)
 # ==========================================
 async def engine_global_broadcast(groups_list, quiz_data, owner_name):
     try:
@@ -1953,7 +1953,9 @@ async def engine_global_broadcast(groups_list, quiz_data, owner_name):
         table = "bot_questions" if is_bot else "questions"
         res = supabase.table(table).select("*, categories(name)" if not is_bot else "*").in_("category_id" if not is_bot else "bot_category_id", cat_ids).execute()
 
-        if not res.data: return
+        if not res.data: 
+            logging.warning("⚠️ لا توجد أسئلة كافية في الأقسام المختارة.")
+            return
 
         # ج- 🔥 السر العشوائي: خلط واختيار مرة واحدة للكل
         questions_pool = res.data
@@ -1967,38 +1969,88 @@ async def engine_global_broadcast(groups_list, quiz_data, owner_name):
         for i, q in enumerate(selected_questions):
             ans = str(q.get('correct_answer') or q.get('answer_text') or q.get('answer') or "").strip()
             cat_name = q.get('category') or (q['categories']['name'] if q.get('categories') else "عام")
+            q_text = q.get('question_text') or q.get('text') or "ما هي الإجابة الصحيحة؟"
 
-            # تحديث الرادار
-            global_quiz.update({"active": True, "ans": ans, "winner_id": None, "winner_name": "", "start_time": time.time()})
+            # 1️⃣ تحديث "النخاع الشوكي" (جدول global_system) لضمان الرصد العالمي
+            try:
+                supabase.table("global_system").update({
+                    "is_active": True,
+                    "question": q_text,
+                    "answer": ans,
+                    "start_time": "now()",
+                    "winner_id": None,
+                    "winner_name": "",
+                    "participating_groups": json.dumps(groups_list)
+                }).eq("id", 1).execute() 
+            except Exception as db_err:
+                logging.error(f"❌ DB Sync Error: {db_err}")
 
-            # بث السؤال لكل المجموعات (قالب ياسر المطور)
+            # 2️⃣ تحديث الرادار المحلي (للسرعة في الذاكرة)
+            global_quiz.update({
+                "active": True, 
+                "ans": ans, 
+                "winner_id": None, 
+                "winner_name": "", 
+                "start_time": time.time()
+            })
+
+            # 3️⃣ بث السؤال لكل المجموعات (قالب ياسر المطور)
             send_tasks = [send_quiz_question(cid, q, i+1, len(selected_questions), {
                 'owner_name': owner_name, 'mode': quiz_data['mode'], 
                 'time_limit': quiz_data['time_limit'], 'cat_name': cat_name
             }) for cid in groups_list]
             await asyncio.gather(*send_tasks, return_exceptions=True)
 
-            # انتظار الإجابة أو انتهاء الوقت
+            # 4️⃣ انتظار الإجابة أو انتهاء الوقت
             t_limit = int(quiz_data.get('time_limit', 15))
             start_wait = time.time()
             while time.time() - start_wait < t_limit:
+                # إذا قام الرادار بتعطيل النشاط (بسبب وجود فائز) نكسر الحلقة
                 if not global_quiz.get('active'): break
                 await asyncio.sleep(0.4)
 
-            # هـ- معالجة الفائز وعرض النتائج
+            # 5️⃣ إغلاق السؤال في الجدول العالمي فوراً
+            try:
+                supabase.table("global_system").update({"is_active": False}).eq("id", 1).execute()
+            except: pass
+
+            # هـ- معالجة الفائز وعرض النتائج اللحظية
             global_quiz['active'] = False
             winners_list = []
             if global_quiz.get('winner_id'):
                 wid, wname = global_quiz['winner_id'], global_quiz['winner_name']
-                if wid not in overall_global_scores: overall_global_scores[wid] = {"name": wname, "points": 0}
+                if wid not in overall_global_scores: 
+                    overall_global_scores[wid] = {"name": wname, "points": 0}
                 overall_global_scores[wid]['points'] += 10
                 winners_list = [{"name": wname, "id": wid}]
 
+            # إرسال نتائج السؤال الحالي
             res_tasks = [send_creative_results(cid, ans, winners_list, overall_global_scores) for cid in groups_list]
             await asyncio.gather(*res_tasks, return_exceptions=True)
-            await asyncio.sleep(4)
 
-        # و- إعلان النتائج النهائية 🏆
+            # ⏱️ [ محرك العداد التنازلي المطور لتجنب الـ Flood ]
+            if i < len(selected_questions) - 1:
+                await asyncio.sleep(2) 
+                
+                async def run_countdown(chat_id):
+                    try:
+                        icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
+                        countdown_msg = await bot.send_message(chat_id, "⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
+                        for count in [3, 1]: # تحديثين فقط لتجنب الحظر
+                            await asyncio.sleep(2)
+                            icon = icons[count] if count < len(icons) else "⚪"
+                            try: await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...", parse_mode="HTML")
+                            except: break
+                        await asyncio.sleep(1)
+                        await countdown_msg.delete()
+                    except: pass
+
+                count_tasks = [run_countdown(cid) for cid in groups_list]
+                await asyncio.gather(*count_tasks, return_exceptions=True)
+            else:
+                await asyncio.sleep(2)
+
+        # و- إعلان النتائج النهائية لجميع المجموعات 🏆
         final_tasks = [send_final_results(cid, overall_global_scores, len(selected_questions)) for cid in groups_list]
         await asyncio.gather(*final_tasks, return_exceptions=True)
 
