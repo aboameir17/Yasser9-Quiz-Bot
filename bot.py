@@ -387,12 +387,11 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
     # 🚀 انطلاق العد التنازلي الآن
     await launch_global_countdown(quiz_id, q, global_quiz["participants"])
 
-
 async def launch_global_countdown(quiz_id, q_data, participant_ids):
     """محرك العد التنازلي وتدشين الإذاعة الموحدة"""
     group_messages = {}
     
-    # إرسال رسالة "استعدوا" لكل المشاركين
+    # 1. إرسال رسالة "استعدوا"
     tasks = [bot.send_message(cid, "⏳ **استعدوا.. جاري تحضير البث العالمي!**") for cid in participant_ids]
     sent_messages = await asyncio.gather(*tasks, return_exceptions=True)
     
@@ -400,23 +399,41 @@ async def launch_global_countdown(quiz_id, q_data, participant_ids):
         if isinstance(msg, types.Message):
             group_messages[msg.chat.id] = msg.message_id
 
-    # دورة العد التنازلي الموحدة (ثانية ثانية)
+    # 2. دورة العد التنازلي (10 ثواني)
     timer_icons = ["🔟", "9️⃣", "8️⃣", "7️⃣", "6️⃣", "5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣", "🚀"]
     for icon in timer_icons:
-        text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق!**"
+        text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق! أظهروا لنا قوتكم..**"
         edit_tasks = [bot.edit_message_text(text, cid, mid) for cid, mid in group_messages.items()]
         await asyncio.gather(*edit_tasks, return_exceptions=True)
         await asyncio.sleep(1)
 
-    # تنظيف رسائل العداد لتجهيز الشاشة للسؤال الأول
+    # 3. تنظيف رسائل العداد
     for cid, mid in group_messages.items():
         try: asyncio.create_task(bot.delete_message(cid, mid))
         except: pass
 
-    # 6. 🔥 إطلاق المحرك العالمي الفعلي (الذي يبث الأسئلة)
+    # 4. 🔥 [هنا مربط الفرس]: جلب الأسئلة أولاً ثم تشغيل المحرك
+    # نحدد نوع المحرك (بوت أو مستخدم)
     engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
-    # هنا نستدعي دالة الإذاعة الصافية التي صممناها سابقاً
-    asyncio.create_task(run_global_broadcast_logic(q_data, "إذاعة عامة 🌐", engine_type))
+    
+    # جلب الأسئلة من جدول الأسئلة بناءً على الـ quiz_id
+    questions_res = supabase.table("quiz_questions").select("*").eq("quiz_id", quiz_id).execute()
+    questions = questions_res.data
+
+    if not questions:
+        # إذا مافي أسئلة، نبلغهم ونقفل
+        for cid in participant_ids:
+            await bot.send_message(cid, "⚠️ خطأ: لم يتم العثور على أسئلة لهذه المسابقة.")
+        return
+
+    # 5. 🚀 تشغيل المحرك الموحد وإعطاؤه الأسئلة
+    # نستخدم asyncio.create_task عشان ما نعلق البوت
+    asyncio.create_task(run_global_broadcast_logic(
+        questions=questions, 
+        quiz_data=q_data, 
+        owner_name=q_data.get('owner_name', 'المنظم'), 
+        engine_type=engine_type
+    ))
     
 # ==========================================
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
