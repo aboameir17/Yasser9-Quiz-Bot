@@ -427,6 +427,38 @@ class Form(StatesGroup):
     waiting_for_quiz_name = State()
 
 # ==========================================
+# 📡 الرادار الموحد (الإذاعة العالمية + المسابقات المحلية)
+# ==========================================
+@dp.message_handler(lambda m: m.text and not m.text.startswith('/'))
+async def unified_answer_monitor(m: types.Message):
+    global global_quiz  # لاستدعاء بيانات الإذاعة
+    cid = m.chat.id
+    uid = m.from_user.id
+    user_raw = m.text
+    uname = m.from_user.first_name
+
+    # 🌍 [1] فحص الإذاعة العالمية (إذا كانت شغالة والقروب مشارك)
+    if global_quiz.get("active") and cid in global_quiz.get("participants", []):
+        correct_raw = global_quiz.get("ans")
+        
+        # استخدام عقل ياسر المطور للتحقق (التشكيل، الأرقام، الترتيب)
+        if is_global_answer_correct(user_raw, correct_raw):
+            global_quiz["active"] = False # إيقاف فوري عالمياً
+            global_quiz["winner_id"] = uid
+            global_quiz["winner_name"] = uname
+            await m.reply(f"🎯 **كفو يا بطل!**\nإجابتك صحيحة ({user_raw}) وخظفت النقطة عالمياً.. 🚀")
+            return # إنهاء لعدم التداخل مع المحلي
+
+    # 🏠 [2] فحص المسابقة المحلية (الوضع العادي)
+    if cid in active_quizzes and active_quizzes[cid]['active']:
+        correct_local = active_quizzes[cid]['ans']
+        if is_global_answer_correct(user_raw, correct_local):
+            if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
+                active_quizzes[cid]['winners'].append({"name": uname, "id": uid})
+                if active_quizzes[cid]['mode'] == 'السرعة ⚡':
+                    active_quizzes[cid]['active'] = False
+                await m.reply(f"✅ إجابة صحيحة يا {uname}!")
+# ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
@@ -2122,30 +2154,6 @@ def is_answer_correct(user_msg, correct_ans):
 
     return False
 
-# ---- رصد الإجابات (Check Answers) ----
-@dp.message_handler(lambda m: not m.text.startswith('/'))
-async def check_ans(m: types.Message):
-    cid = m.chat.id
-    # التأكد أن هناك مسابقة قائمة في هذه المجموعة
-    if cid in active_quizzes and active_quizzes[cid]['active']:
-        
-        user_raw = m.text
-        correct_raw = active_quizzes[cid]['ans']
-        
-        # استخدام المنطق الذكي للتحقق
-        if is_answer_correct(user_raw, correct_raw):
-            
-            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-            if not any(w['id'] == m.from_user.id for w in active_quizzes[cid]['winners']):
-                
-                active_quizzes[cid]['winners'].append({
-                    "name": m.from_user.first_name, 
-                    "id": m.from_user.id
-                })
-                
-                # إذا كان وضع المسابقة هو "السرعة"، نغلق السؤال فوراً
-                if active_quizzes[cid]['mode'] == 'السرعة ⚡':
-                    active_quizzes[cid]['active'] = False
 
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
