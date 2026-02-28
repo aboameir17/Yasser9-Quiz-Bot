@@ -430,11 +430,8 @@ async def launch_global_countdown(quiz_id, q_data):
         target_chat = p['chat_id']
         if is_bot:
             # تشغيل محرك البوت (النسخة العشوائية الشغالة)
-            asyncio.create_task(engine_bot_questions(target_chat, q_data, "إذاعة عامة 🌐"))
-        else:
-            # تشغيل محرك الأعضاء
-            asyncio.create_task(engine_user_questions(target_chat, q_data, "إذاعة عامة 🌐"))
-
+            asyncio.create_task(engine_broadcast_global(target_chat, q_data, "إذاعة عامة 🌐"))
+        
     # 5. تنظيف الجدول المؤقت
     supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
     
