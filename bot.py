@@ -2497,35 +2497,69 @@ async def handle_accept_quiz(c: types.CallbackQuery):
 # ==========================================
 @dp.message_handler(lambda m: m.text and not m.text.startswith('/'), chat_type=[types.ChatType.PRIVATE, types.ChatType.GROUP, types.ChatType.SUPERGROUP])
 async def unified_answer_monitor(m: types.Message):
+    # 💡 أولاً: نتأكد أن المستخدم ليس في "حالة إدخال بيانات" (مثل إضافة قسم)
+    state = dp.current_state(chat=m.chat.id, user=m.from_user.id)
+    if await state.get_state() is not None:
+        return
+
     global global_quiz, active_quizzes
+    user_raw = m.text.strip()
+    cid, uid, uname = m.chat.id, m.from_user.id, m.from_user.first_name
+
+    # 🌍 [1] فحص الإذاعة العالمية (الرادار المزدوج)
+    # نتحقق من الذاكرة المحلية (global_quiz) لسرعة الرد
+    is_global_active = global_quiz.get("active")
     
-    user_raw = m.text
-    # ✅ السطر المصحح (يجب أن يكون داخل الدالة ومزاح لليمين)
-    print(f"DEBUG: رسالة من {m.chat.type} - النص: {user_raw}")
+    # 🔍 إذا لم تكن نشطة في الذاكرة، نلقي نظرة سريعة على سوبابيس (للاحتياط)
+    if not is_global_active:
+        try:
+            # نجلب حالة المسابقة من الجدول (السطر رقم 1)
+            res = supabase.table("global_system").select("*").eq("id", 1).execute()
+            if res.data and res.data[0]['is_active']:
+                # نقوم بتحديث الذاكرة المحلية فوراً بالبيانات من القاعدة
+                global_quiz.update({
+                    "active": True,
+                    "ans": res.data[0]['answer'],
+                    "participants": json.loads(res.data[0]['participating_groups'] or '[]')
+                })
+                is_global_active = True
+        except: pass
 
-    cid = m.chat.id
-    uid = m.from_user.id
-    uname = m.from_user.first_name
-
-    # 🌍 [1] فحص الإذاعة العالمية
-    if global_quiz.get("active") and cid in global_quiz.get("participants", []):
+    # الآن نتحقق من الإجابة العالمية
+    if is_global_active and cid in global_quiz.get("participants", []):
         correct_raw = global_quiz.get("ans")
         if is_global_answer_correct(user_raw, correct_raw):
+            # 🏆 إعلان الفائز وإغلاق المسابقة في كل مكان
             global_quiz["active"] = False 
             global_quiz["winner_id"] = uid
             global_quiz["winner_name"] = uname
-            await m.reply(f"🎯 **كفو يا بطل!**\nإجابتك صحيحة وخظفت النقطة عالمياً.. 🚀")
+            
+            # تحديث سوبابيس بالفائز وإغلاق النشاط
+            try:
+                supabase.table("global_system").update({
+                    "is_active": False,
+                    "winner_id": uid,
+                    "winner_name": uname
+                }).eq("id", 1).execute()
+            except: pass
+            
+            await m.reply(f"🎯 **كفو يا {uname}!**\nإجابتك صحيحة ({user_raw}) وخظفت النقطة عالمياً.. 🚀")
             return 
 
-    # 🏠 [2] فحص المسابقة المحلية
-    if cid in active_quizzes and active_quizzes[cid]['active']:
-        correct_local = active_quizzes[cid]['ans']
+    # 🏠 [2] فحص المسابقة المحلية (داخل القروب فقط)
+    if cid in active_quizzes and active_quizzes[cid].get('active'):
+        correct_local = active_quizzes[cid].get('ans')
         if is_global_answer_correct(user_raw, correct_local):
+            # منع تكرار الفوز لنفس الشخص في نفس السؤال
             if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
                 active_quizzes[cid]['winners'].append({"name": uname, "id": uid})
-                if active_quizzes[cid]['mode'] == 'السرعة ⚡':
+                
+                # إذا كان نمط السرعة، نغلق السؤال بعد أول إجابة
+                if active_quizzes[cid].get('mode') == 'السرعة ⚡':
                     active_quizzes[cid]['active'] = False
+                
                 await m.reply(f"✅ إجابة صحيحة يا {uname}!")
+                return
 # ==========================================
 # 5. نهاية الملف: ضمان التشغيل 24/7 (Keep-Alive)
 # ==========================================
