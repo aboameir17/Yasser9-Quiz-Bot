@@ -426,7 +426,6 @@ class Form(StatesGroup):
     waiting_for_new_cat_name = State()
     waiting_for_quiz_name = State()
 
-# 5. الترحيب التلقائي بصورة البوت
 # ==========================================
 @dp.message_handler(content_types=types.ContentTypes.NEW_CHAT_MEMBERS)
 async def welcome_bot_to_group(message: types.Message):
@@ -456,8 +455,7 @@ async def welcome_bot_to_group(message: types.Message):
             )
 
             try:
-                # ضع الـ File ID الذي حصلت عليه من @FileIdBot هنا
-                bot_photo_id = "AgACAgQAAxkBAA..." # استبدل هذا بالكود الذي سيعطيك إياه البوت
+                bot_photo_id = "AgACAgQAAxkBAA..." 
                 await message.answer_photo(
                     photo=bot_photo_id, 
                     caption=welcome_text, 
@@ -465,8 +463,10 @@ async def welcome_bot_to_group(message: types.Message):
                     parse_mode="HTML"
                 )
             except:
-                # في حال لم تضع الآيدي بعد أو حدث خطأ، يرسل نصاً فقط
                 await message.answer(welcome_text, reply_markup=kb_welcome, parse_mode="HTML")
+    
+    # 💡 مهم جداً لإنهاء المهمة فوراً
+    return
 
 # ==========================================
 # 6. أمر التفعيل (Request Activation)
