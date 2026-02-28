@@ -329,15 +329,13 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
     q = res_q.data
     if not q: return await c.answer("❌ تعذر جلب بيانات المسابقة")
 
-    # 2. جلب المجموعات المفعلة من الهب
+    # 2. جلب المجموعات المفعلة
     groups_res = supabase.table("groups_hub").select("group_id").eq("status", "active").execute()
     if not groups_res.data:
         return await c.answer("⚠️ لا توجد مجموعات مفعلة حالياً.", show_alert=True)
 
-    # 3. تجهيز بيانات القالب (التنسيق الذي طلبته)
+    # 3. تجهيز نص الإعلان (نفس تنسيقك)
     source_text = "أسئلة البوت الذكية 🤖" if q.get('is_bot_quiz') else "أسئلة المستخدم الخاصة 👤"
-    q_scope = "إذاعة عامة 🌐" if q.get('is_public') else "مسابقة داخلية 📍"
-    
     broadcast_text = (
         f"📢 **إعلان: مسابقة عالمية منطلقة الآن!** 🌐\n"
         f"━━━━━━━━━━━━━━\n"
@@ -345,85 +343,81 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id, owner_id):
         f"👤 المنظم: **{c.from_user.first_name}**\n\n"
         f"📊 **تفاصيل التحدي:**\n"
         f"📁 المصدر: `{source_text}`\n"
-        f"📡 النطاق: **{q_scope}**\n"
         f"🔢 عدد الأسئلة: `{q.get('questions_count', 10)}`\n"
         f"⏳ وقت السؤال: `{q.get('time_limit', 15)} ثانية`\n"
-        f"🔖 النظام: **{q.get('mode', 'السرعة ⚡')}**\n"
         f"━━━━━━━━━━━━━━\n"
-        f"⏳ **الانطلاق خلال: 60 ثانية**\n\n"
-        f"⚠️ **للمشرفين:** اضغط أدناه للانضمام إلى البث العالمي!"
+        f"⏳ **الانطلاق خلال: 60 ثانية**"
     )
     
     kb = InlineKeyboardMarkup().add(
         InlineKeyboardButton("✅ قبول التحدي والانضمام", callback_data=f"accept_q_{quiz_id}_{owner_id}")
     )
 
-    # إرسال الدعوات وتخزين الـ IDs لحذفها لاحقاً
-    invitation_messages = [] # قائمة لحفظ (chat_id, message_id)
+    invitation_messages = []
     for g in groups_res.data:
         try:
             msg = await bot.send_message(g['group_id'], broadcast_text, reply_markup=kb, parse_mode="Markdown")
             invitation_messages.append((g['group_id'], msg.message_id))
-            await asyncio.sleep(0.05)
         except: continue
     
     await c.answer(f"🚀 تم بث الدعوة لـ {len(invitation_messages)} مجموعة!", show_alert=True)
 
-    # 4. انتظار دقيقة لتجميع المشاركين
+    # 4. انتظار تجميع المشاركين (بدون تجميد البوت بالكامل)
     await asyncio.sleep(60)
+
+    # 5. 🔥 [الإصلاح]: استدعاء العد التنازلي يدوياً وتمرير البيانات له
+    # قبل المسح من قاعدة البيانات، نتأكد من جلب المشاركين
+    participants_res = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz_id).execute()
     
-    # 🔥 [تطوير ياسر]: حذف رسائل الإعلان فوراً قبل بدء العد التنازلي
+    if not participants_res.data:
+        # إذا لم يقبل أحد التحدي، نحذف رسائل الدعوة ونعتذر
+        for chat_id, msg_id in invitation_messages:
+            try: await bot.delete_message(chat_id, msg_id)
+            except: pass
+        return await bot.send_message(owner_id, "⚠️ تم إلغاء الإذاعة لعدم وجود مشاركين.")
+
+    # تجهيز قائمة الـ IDs العالمية
+    global_quiz["participants"] = [p['chat_id'] for p in participants_res.data]
+
+    # حذف رسائل الإعلان فوراً
     for chat_id, msg_id in invitation_messages:
         try: asyncio.create_task(bot.delete_message(chat_id, msg_id))
         except: pass
 
-    # 5. الانطلاق للعد التنازلي الموحد
-    await launch_global_countdown(quiz_id, q, invitation_messages)
+    # 🚀 انطلاق العد التنازلي الآن
+    await launch_global_countdown(quiz_id, q, global_quiz["participants"])
 
-async def launch_global_countdown(quiz_id, q_data, invitation_messages):
+
+async def launch_global_countdown(quiz_id, q_data, participant_ids):
     """محرك العد التنازلي وتدشين الإذاعة الموحدة"""
-    participants = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz_id).execute()
-    
-    if not participants.data:
-        logging.info("لا يوجد مشاركين.")
-        return 
-
     group_messages = {}
-    tasks = []
     
-    # إعلان التفاصيل النهائية قبل العد التنازلي مباشرة
-    for p in participants.data:
-        tasks.append(bot.send_message(p['chat_id'], "⏳ **استعدوا.. جاري تحضير البث العالمي!**"))
-    
+    # إرسال رسالة "استعدوا" لكل المشاركين
+    tasks = [bot.send_message(cid, "⏳ **استعدوا.. جاري تحضير البث العالمي!**") for cid in participant_ids]
     sent_messages = await asyncio.gather(*tasks, return_exceptions=True)
+    
     for msg in sent_messages:
         if isinstance(msg, types.Message):
             group_messages[msg.chat.id] = msg.message_id
 
-    # دورة العد التنازلي الذكية (Edit)
+    # دورة العد التنازلي الموحدة (ثانية ثانية)
     timer_icons = ["🔟", "9️⃣", "8️⃣", "7️⃣", "6️⃣", "5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣", "🚀"]
     for icon in timer_icons:
-        text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق! أظهروا لنا قوتكم..**"
+        text = f"⏳ **المسابقة العالمية تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق!**"
         edit_tasks = [bot.edit_message_text(text, cid, mid) for cid, mid in group_messages.items()]
         await asyncio.gather(*edit_tasks, return_exceptions=True)
-        await asyncio.sleep(1.1)
+        await asyncio.sleep(1)
 
-    # حذف رسائل العداد فوراً بعد "انطلاق" لتجهيز الشاشة للسؤال الأول
+    # تنظيف رسائل العداد لتجهيز الشاشة للسؤال الأول
     for cid, mid in group_messages.items():
         try: asyncio.create_task(bot.delete_message(cid, mid))
         except: pass
 
-    # 6. 🔥 الربط بالمحرك العالمي (بث موحد لجميع القروبات)
-    global_quiz["participants"] = [p['chat_id'] for p in participants.data]
+    # 6. 🔥 إطلاق المحرك العالمي الفعلي (الذي يبث الأسئلة)
+    engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
+    # هنا نستدعي دالة الإذاعة الصافية التي صممناها سابقاً
+    asyncio.create_task(run_global_broadcast_logic(q_data, "إذاعة عامة 🌐", engine_type))
     
-    if global_quiz["participants"]:
-        # تشغيل المحرك الموحد الذي يختار الأسئلة عشوائياً (مرة واحدة) ثم يبثها
-        engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
-        asyncio.create_task(engine_broadcast_global(q_data, "إذاعة عامة 🌐"))
-        print(f"✅ تم إطلاق الإذاعة بنجاح!")
-
-    # 7. تنظيف الجدول المؤقت
-    supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
 # ==========================================
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
 async def announce_quiz_type(chat_id, quiz_data, engine_type):
