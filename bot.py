@@ -1728,7 +1728,6 @@ async def engine_user_questions(chat_id, quiz_data, owner_name):
     except Exception as e:
         logging.error(f"User Engine Error: {e}")
 
-
 # ==========================================
 # [3] محرك إذاعة الكوكب (اختيار عشوائي + بث موحد) 🛰️🔥
 # ==========================================
@@ -1869,7 +1868,112 @@ async def delete_after(message, delay):
         await message.delete()
     except Exception: 
         pass
+# ==========================================
+# --- ---
+# ==========================================
+async def run_global_broadcast_logic(questions, quiz_data, owner_name, engine_type):
+    # ملاحظة: random.shuffle تمت قبل استدعاء هذا المحرك لضمان توحد السؤال
+    overall_global_scores = {}
 
+    for i, q in enumerate(questions):
+        # 1. استخراج الإجابة والنص (نفس منطقك تماماً)
+        if engine_type == "bot":
+            ans = str(q.get('correct_answer') or "").strip()
+            cat_name = q.get('category') or "بوت"
+        else:
+            ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
+            cat_name = q['categories']['name'] if q.get('categories') else "عام"
+
+        # 2. تجهيز الرادار العالمي (بدلاً من active_quizzes[chat_id])
+        global_quiz.update({
+            "active": True, 
+            "ans": ans, 
+            "winners": [], # في الإذاعة غالباً فائز واحد لكن نتركها مصفوفة للمرونة
+            "mode": quiz_data['mode'], 
+            "hint_sent": False,
+            "start_time": time.time()
+        })
+        
+        # 3. إرسال قالب السؤال "لكل" القروبات المشاركة 🚀
+        send_tasks = []
+        for chat_id in global_quiz["participants"]:
+            send_tasks.append(send_quiz_question(chat_id, q, i+1, len(questions), {
+                'owner_name': owner_name, 
+                'mode': quiz_data['mode'], 
+                'time_limit': quiz_data['time_limit'], 
+                'cat_name': cat_name
+            }))
+        await asyncio.gather(*send_tasks, return_exceptions=True)
+        
+        # 4. محرك الوقت الذكي والتلميح الملكي العالمي ✨
+        start_time = time.time()
+        t_limit = int(quiz_data.get('time_limit', 15))
+        h_messages = [] # لتخزين رسائل التلميح لحذفها
+        
+        while time.time() - start_time < t_limit:
+            # إذا تم رصد إجابة في أي قروب، نكسر الوقت فوراً
+            if not global_quiz.get('active'):
+                break
+            
+            # منطق التلميح الذكي
+            if quiz_data.get('smart_hint') and not global_quiz['hint_sent']:
+                if (time.time() - start_time) >= (t_limit / 2):
+                    try:
+                        hint_text = await generate_smart_hint(ans)
+                        hint_tasks = [bot.send_message(cid, hint_text, parse_mode="HTML") for cid in global_quiz["participants"]]
+                        h_messages = await asyncio.gather(*hint_tasks, return_exceptions=True)
+                        global_quiz['hint_sent'] = True
+                    except Exception as e:
+                        logging.error(f"⚠️ خطأ في تلميح الإذاعة: {e}")
+
+            await asyncio.sleep(0.5)
+
+        # حذف التلميحات (اختياري)
+        for h_msg in h_messages:
+            if isinstance(h_msg, types.Message):
+                asyncio.create_task(delete_after(h_msg, 0))
+
+        # 5. إنهاء السؤال وحساب النقاط عالمياً
+        global_quiz['active'] = False
+        if global_quiz.get('winner_id'):
+            uid = global_quiz['winner_id']
+            if uid not in overall_global_scores: 
+                overall_global_scores[uid] = {"name": global_quiz['winner_name'], "points": 0}
+            overall_global_scores[uid]['points'] += 10
+        
+            # 6. عرض لوحة المبدعين اللحظية في كل القروبات
+            res_winners = [{"name": global_quiz['winner_name'], "id": global_quiz['winner_id']}]
+            res_tasks = [send_creative_results(cid, ans, res_winners, overall_global_scores) for cid in global_quiz["participants"]]
+            await asyncio.gather(*res_tasks, return_exceptions=True)
+        
+        # --- [ ⏱️ محرك العداد التنازلي للإذاعة ] ---
+        if i < len(questions) - 1:
+            icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
+            # إرسال رسائل العداد لكل القروبات
+            count_tasks = [bot.send_message(cid, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...") for cid in global_quiz["participants"]]
+            countdown_msgs = await asyncio.gather(*count_tasks, return_exceptions=True)
+            
+            for count in range(4, 0, -2):
+                await asyncio.sleep(2)
+                icon = icons[count] if count < len(icons) else "⚪"
+                text = f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني..."
+                edit_tasks = []
+                for m in countdown_msgs:
+                    if isinstance(m, types.Message):
+                        edit_tasks.append(bot.edit_message_text(text, m.chat.id, m.message_id, parse_mode="HTML"))
+                await asyncio.gather(*edit_tasks, return_exceptions=True)
+            
+            await asyncio.sleep(1.5)
+            # حذف رسائل العداد
+            for m in countdown_msgs:
+                if isinstance(m, types.Message):
+                    asyncio.create_task(m.delete())
+        else:
+            await asyncio.sleep(2)
+            # 7. إعلان لوحة الشرف النهائية في كل القروبات
+            final_tasks = [send_final_results(cid, overall_global_scores, len(questions)) for cid in global_quiz["participants"]]
+            await asyncio.gather(*final_tasks, return_exceptions=True)
+            
 # ==========================================
 # [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
