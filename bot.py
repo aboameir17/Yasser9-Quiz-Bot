@@ -1982,6 +1982,95 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
             await send_final_results(chat_id, overall_scores, len(questions))
     
 # ==========================================
+# [ المحرك العالمي المستقل - الإذاعة الكبرى ] 🛰️🔥
+# ==========================================
+async def run_global_broadcast_engine(questions, quiz_data, owner_name):
+    """
+    محرك الإذاعة العالمي: يدير المسابقة في كل القروبات المتصلة بـ 'رادار المريخ'
+    """
+    random.shuffle(questions)
+    # ملاحظة: النقاط هنا تُحسب على مستوى "الكوكب" (من الأسرع عالمياً)
+    global_scores = {} 
+
+    for i, q in enumerate(questions):
+        # 1. تجهيز الإجابة (ميزان العدل ⚖️)
+        ans_raw = str(q.get('answer_text') or q.get('correct_answer') or q.get('ans') or "").strip()
+        correct_ans = normalize(ans_raw) # تأكد أن دالة normalize موجودة
+
+        # 2. تفعيل الرادار المركزي (تشغيل القاضي العالمي 🛡️)
+        global_quiz.update({
+            "active": True,
+            "answer": correct_ans,
+            "start_time": time.time(),
+            "winner_id": None, # تصفير الفائز لكل سؤال جديد
+            "hint_sent": False
+        })
+
+        # 3. إرسال السؤال لكل الكواكب (بث متوازي ⚡)
+        q_text = (
+            f"🌍 **【 سـؤال الإذاعـة العالـمي ({i+1}/{len(questions)}) 】**\n\n"
+            f"❓ {q.get('question') or q.get('text')}\n\n"
+            f"👤 المنظم: {owner_name}\n"
+            f"⚡ أسرع إجابة صحيحة تفوز عالمياً!"
+        )
+
+        tasks = []
+        for chat_id in global_quiz["participants"]:
+            tasks.append(bot.send_message(chat_id, q_text, parse_mode="Markdown"))
+        
+        # حفظ الـ IDs عشان المكنسة الملكية تحذفها لاحقاً
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for idx, res in enumerate(results):
+            if not isinstance(res, Exception):
+                global_question_messages[global_quiz["participants"][idx]] = res.message_id
+
+        # 4. محرك الوقت والتلميح العالمي ✨
+        t_limit = int(quiz_data.get('time_limit', 15))
+        start_time = time.time()
+        
+        while time.time() - start_time < t_limit:
+            # إذا أحد جاوب (القاضي العالمي سيحول active إلى False)
+            if not global_quiz["active"]:
+                break
+            
+            # نظام التلميح الذكي (يرسل لكل القروبات في منتصف الوقت)
+            if quiz_data.get('smart_hint') and not global_quiz["hint_sent"]:
+                if (time.time() - start_time) >= (t_limit / 2):
+                    global_quiz["hint_sent"] = True
+                    hint_text = await generate_smart_hint(ans_raw)
+                    hint_tasks = [bot.send_message(cid, hint_text, parse_mode="HTML") for cid in global_quiz["participants"]]
+                    await asyncio.gather(*hint_tasks, return_exceptions=True)
+
+            await asyncio.sleep(0.5)
+
+        # 5. معالجة النقاط بعد نهاية وقت السؤال أو فوز أحد الأبطال
+        if global_quiz["winner_id"]:
+            uid = global_quiz["winner_id"]
+            uname = global_quiz["winner_name"]
+            if uid not in global_scores:
+                global_scores[uid] = {"name": uname, "points": 0}
+            global_scores[uid]['points'] += 10
+
+        # 6. إرسال النتيجة اللحظية لكل القروبات
+        # سنستخدم نفس القالب اللي تحبه لكن بصيغة "بطل الكوكب"
+        res_text = (
+            f"🏁 **انتهى السؤال!**\n✅ الإجابة: `{ans_raw}`\n\n"
+            f"🏆 بطل السؤال: {global_quiz['winner_name'] or 'لا أحد'}\n"
+            f"🏰 المجموعة: {global_quiz['winner_group'] or '---'}"
+        )
+        
+        res_tasks = [bot.send_message(cid, res_text, parse_mode="Markdown") for cid in global_quiz["participants"]]
+        await asyncio.gather(*res_tasks, return_exceptions=True)
+
+        # 7. العداد التنازلي بين الأسئلة (لتجنب الـ Flood)
+        if i < len(questions) - 1:
+            await asyncio.sleep(2) # راحة قصيرة قبل السؤال التالي
+            # تنظيف السؤال السابق قبل الانتقال
+            asyncio.create_task(royal_cleanup_task(0)) 
+
+    # 8. إعلان لوحة الشرف النهائية العالمية 🎊
+    await send_global_final_results(global_scores)
+# ==========================================
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
 async def announce_quiz_type(chat_id, quiz_data, engine_type):
     """إعلان تفاصيل المسابقة بناءً على عمود is_public الحقيقي"""
