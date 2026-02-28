@@ -1856,92 +1856,165 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
    # 7. إعلان لوحة الشرف النهائية
             await send_final_results(chat_id, overall_scores, len(questions))
     
-# ==========================================
-# 🛰️ GLOBAL BROADCAST ENGINE (المحرك الموحد الشامل)
-# ==========================================
 
+# ==========================================
+# 🧠 1. نظام التنظيف والتحقق الذكي (ياسر المطور)
+# ==========================================
+def is_global_answer_correct(user_msg, correct_ans):
+    if not user_msg or not correct_ans: return False
+
+    # قاموس تحويل الأرقام النصية إلى أرقام (لضمان 20 = عشرين)
+    num_map = {
+        "واحد": "1", "اثنان": "2", "اثنين": "2", "ثلاثه": "3", "اربع": "4", "اربعه": "4",
+        "خمسه": "5", "سته": "6", "سبعه": "7", "ثمانيه": "8", "تسعه": "9", "عشره": "10",
+        "احد عشر": "11", "اثنا عشر": "12", "عشرين": "20", "ثلاثين": "30", "اربعين": "40",
+        "خمسين": "50", "ستين": "60", "سبعين": "70", "ثمانين": "80", "تسعين": "90", "مائه": "100"
+    }
+
+    def clean_logic(text):
+        # أ- تنظيف أساسي وحذف المسافات
+        text = text.strip().lower()
+        
+        # ب- 🔥 حذف التشكيل والزخارف (الفتحة، الضمة، الكسرة، الشدة، التطويل ـ)
+        tashkeel_pattern = re.compile(r'[\u064B-\u0652\u0653\u0654\u0655\u0656\u0657\u0658\u0659\u065A\u065B\u065C\u065D\u065E\u0640]')
+        text = re.sub(tashkeel_pattern, '', text)
+        
+        # ج- توحيد الحروف (أإآ -> ا / ة -> ه / ى -> ي)
+        text = re.sub(r'[أإآ]', 'ا', text)
+        text = re.sub(r'ة', 'ه', text)
+        text = re.sub(r'ى', 'ي', text)
+        
+        # د- تحويل الكلمات الرقمية (عشرين -> 20) وحذف حرف العطف "و"
+        words = text.split()
+        cleaned_words = []
+        for w in words:
+            if w == 'و': continue # حذف "و" العطف لسهولة المقارنة
+            cleaned_words.append(num_map.get(w, w))
+            
+        return cleaned_words
+
+    user_words = clean_logic(user_msg)
+    correct_words = clean_logic(correct_ans)
+
+    # --- [ قانون حماية الأرقام ] ---
+    # إذا كانت الإجابة الأصلية تحتوي على رقم، يجب أن يتطابق الرقم تماماً
+    correct_digits = re.findall(r'\d+', ' '.join(correct_words))
+    if correct_digits:
+        user_digits = re.findall(r'\d+', ' '.join(user_words))
+        if not user_digits or user_digits[0] != correct_digits[0]:
+            return False # نرفض الإجابة لو الرقم غلط أو مفقود
+
+    # --- [ قانون الأسماء والترتيب ] ---
+    # 1. فحص التطابق التام (بغض النظر عن الترتيب)
+    if sorted(user_words) == sorted(correct_words):
+        return True
+
+    # 2. فحص نسبة الحضور (لو جاب 85% من الكلمات صح في الجمل الطويلة)
+    matches = sum(1 for w in user_words if w in correct_words)
+    if len(correct_words) > 0:
+        if (matches / len(correct_words)) >= 0.85:
+            return True
+
+    # 3. فحص التشابه الإملائي (للحروف المنسية)
+    similarity = difflib.SequenceMatcher(None, ' '.join(user_words), ' '.join(correct_words)).ratio()
+    if similarity >= 0.85:
+        return True
+
+    return False
+
+# ==========================================
+# 📡 2. رادار الرصد العالمي (Monitor)
+# ==========================================
+@dp.message_handler(lambda m: not m.text.startswith('/'))
+async def global_answer_monitor(m: types.Message):
+    # التأكد أن الإذاعة نشطة وأن القروب من ضمن قائمة المشاركين
+    if global_quiz.get("active") and m.chat.id in global_quiz.get("participants", []):
+        
+        user_raw = m.text
+        correct_raw = global_quiz.get("ans")
+
+        # تشغيل عقل التحقق الذكي (ياسر المطور)
+        if is_global_answer_correct(user_raw, correct_raw):
+            
+            # 🛑 إيقاف المسابقة عالمياً فوراً
+            global_quiz["active"] = False
+            global_quiz["winner_id"] = m.from_user.id
+            global_quiz["winner_name"] = m.from_user.first_name
+            
+            # رد فوري في المجموعة التي فاز فيها العضو
+            await m.reply(f"🎯 **كفو يا بطل!**\nإجابتك صحيحة ({user_raw}) وخظفت النقطة عالمياً.. 🚀")
+            return
+
+# ==========================================
+# 🛰️ 3. المحرك الموحد للإذاعة (The Master Engine)
+# ==========================================
 async def engine_global_broadcast(groups_list, quiz_data, owner_name):
     try:
-        # 1. تجهيز الأقسام (منطق ياسر المعتمد)
+        # أ- جلب وفلترة الأقسام
         raw_cats = quiz_data.get('cats', [])
         if isinstance(raw_cats, str):
-            try: cat_ids_list = json.loads(raw_cats)
-            except: cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
-        else: cat_ids_list = raw_cats
+            try: cat_ids = json.loads(raw_cats)
+            except: cat_ids = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+        else: cat_ids = raw_cats
+        cat_ids = [int(c) for c in cat_ids if str(c).strip().isdigit()]
 
-        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
-        if not cat_ids: return
-
-        # 2. تحديد مصدر الأسئلة (بوت أو أعضاء)
+        # ب- سحب الأسئلة (بوت أو أعضاء)
         is_bot = quiz_data.get("is_bot_quiz", False)
-        if is_bot:
-            res = supabase.table("bot_questions").select("*").in_("bot_category_id", cat_ids).execute()
-        else:
-            res = supabase.table("questions").select("*, categories(name)").in_("category_id", cat_ids).execute()
+        table = "bot_questions" if is_bot else "questions"
+        res = supabase.table(table).select("*, categories(name)" if not is_bot else "*").in_("category_id" if not is_bot else "bot_category_id", cat_ids).execute()
 
         if not res.data: return
 
-        # 3. 🔥 السر: خلط عشوائي واختيار العدد (مرة واحدة للكل)
+        # ج- 🔥 السر العشوائي: خلط واختيار مرة واحدة للكل
         questions_pool = res.data
         random.shuffle(questions_pool)
-        count = int(quiz_data.get('questions_count', 10))
-        selected_questions = questions_pool[:count]
+        selected_questions = questions_pool[:int(quiz_data.get('questions_count', 10))]
 
-        # 4. تصفير النقاط العالمية قبل البدء
         global overall_global_scores
         overall_global_scores = {}
 
-        # 5. دورة الأسئلة الموحدة
+        # د- دورة البث الموحدة
         for i, q in enumerate(selected_questions):
-            # استخراج الإجابة والقسم
             ans = str(q.get('correct_answer') or q.get('answer_text') or q.get('answer') or "").strip()
             cat_name = q.get('category') or (q['categories']['name'] if q.get('categories') else "عام")
 
-            # 🛑 تفعيل الرادار العالمي (صيد أول إجابة في الكوكب)
-            global_quiz.update({
-                "active": True, "ans": ans, "winner_id": None, 
-                "winner_name": "", "start_time": time.time(),
-                "participants": groups_list # ربط المجموعات بالرادار
-            })
+            # تحديث الرادار
+            global_quiz.update({"active": True, "ans": ans, "winner_id": None, "winner_name": "", "start_time": time.time()})
 
-            # بث السؤال لكل المجموعات (باستخدام قالبك المطور)
+            # بث السؤال لكل المجموعات (قالب ياسر المطور)
             send_tasks = [send_quiz_question(cid, q, i+1, len(selected_questions), {
                 'owner_name': owner_name, 'mode': quiz_data['mode'], 
                 'time_limit': quiz_data['time_limit'], 'cat_name': cat_name
             }) for cid in groups_list]
             await asyncio.gather(*send_tasks, return_exceptions=True)
 
-            # محرك الوقت الذكي (ينتظر الإجابة أو انتهاء الوقت)
-            start_time = time.time()
+            # انتظار الإجابة أو انتهاء الوقت
             t_limit = int(quiz_data.get('time_limit', 15))
-            while time.time() - start_time < t_limit:
-                if not global_quiz.get('active'): break # توقف لو أحد جاوب صح
-                await asyncio.sleep(0.5)
+            start_wait = time.time()
+            while time.time() - start_wait < t_limit:
+                if not global_quiz.get('active'): break
+                await asyncio.sleep(0.4)
 
-            # 6. معالجة النتيجة وعرض لوحة المبدعين
+            # هـ- معالجة الفائز وعرض النتائج
             global_quiz['active'] = False
-            current_winners = []
+            winners_list = []
             if global_quiz.get('winner_id'):
-                uid = global_quiz['winner_id']
-                uname = global_quiz['winner_name']
-                if uid not in overall_global_scores: overall_global_scores[uid] = {"name": uname, "points": 0}
-                overall_global_scores[uid]['points'] += 10 # إضافة النقاط
-                current_winners = [{"name": uname, "id": uid}]
+                wid, wname = global_quiz['winner_id'], global_quiz['winner_name']
+                if wid not in overall_global_scores: overall_global_scores[wid] = {"name": wname, "points": 0}
+                overall_global_scores[wid]['points'] += 10
+                winners_list = [{"name": wname, "id": wid}]
 
-            # عرض النتائج في كل المجموعات
-            res_tasks = [send_creative_results(cid, ans, current_winners, overall_global_scores) for cid in groups_list]
+            res_tasks = [send_creative_results(cid, ans, winners_list, overall_global_scores) for cid in groups_list]
             await asyncio.gather(*res_tasks, return_exceptions=True)
+            await asyncio.sleep(4)
 
-            # مهلة 5 ثواني قبل السؤال التالي (أو العد التنازلي 🔴🟠🟡)
-            if i < len(selected_questions) - 1:
-                await asyncio.sleep(5)
-
-        # 7. إعلان لوحة الشرف النهائية 🏆
+        # و- إعلان النتائج النهائية 🏆
         final_tasks = [send_final_results(cid, overall_global_scores, len(selected_questions)) for cid in groups_list]
         await asyncio.gather(*final_tasks, return_exceptions=True)
 
     except Exception as e:
-        logging.error(f"Global Engine Error: {e}")
+        logging.error(f"Global Master Engine Error: {e}")
+
 # ==========================================
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
 async def announce_quiz_type(chat_id, quiz_data, engine_type):
