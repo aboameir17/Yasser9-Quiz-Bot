@@ -436,7 +436,8 @@ async def welcome_bot_to_group(message: types.Message):
             )
 
             try:
-                bot_photo_id = "AgACAgQAAxkBAA..." 
+                # ضع الـ File ID الذي حصلت عليه من @FileIdBot هنا
+                bot_photo_id = "AgACAgQAAxkBAA..." # استبدل هذا بالكود الذي سيعطيك إياه البوت
                 await message.answer_photo(
                     photo=bot_photo_id, 
                     caption=welcome_text, 
@@ -444,11 +445,9 @@ async def welcome_bot_to_group(message: types.Message):
                     parse_mode="HTML"
                 )
             except:
+                # في حال لم تضع الآيدي بعد أو حدث خطأ، يرسل نصاً فقط
                 await message.answer(welcome_text, reply_markup=kb_welcome, parse_mode="HTML")
-    
-    # 💡 مهم جداً لإنهاء المهمة فوراً
-    return
-
+            
 # ==========================================
 # 6. أمر التفعيل (Request Activation)
 # ==========================================
@@ -513,33 +512,28 @@ async def activate_group_hub(message: types.Message):
 # ==========================================
 @dp.message_handler(lambda m: m.text == "تحكم")
 async def control_panel(message: types.Message):
-    # 💡 حماية: إذا كانت الإذاعة العالمية شغالة، اترك الكلمة تمر للرادار
-    global global_quiz
-    if global_quiz.get("active"):
-        return 
-
     user_id = message.from_user.id
     group_id = message.chat.id
 
-    # في المجموعات: نتحقق من التفعيل والصلاحيات
+    # في المجموعات، نتحقق من حالة التفعيل
     if message.chat.type != 'private':
+        # إذا لم يكن المطور، نتحقق من حالة القروب
         if user_id != ADMIN_ID:
             status = await get_group_status(group_id)
             if status != "active":
-                await message.reply("⚠️ <b>هذا القروب غير مفعل.</b>\nيجب تفعيله أولاً.", parse_mode="HTML")
-                return
+                return await message.reply("⚠️ <b>هذا القروب غير مفعل.</b>\nيجب أن يوافق المطور على طلب التفعيل أولاً.", parse_mode="HTML")
             
             # فحص هل المستخدم مشرف
             member = await bot.get_chat_member(group_id, user_id)
             if not (member.is_chat_admin() or member.is_chat_creator()):
-                await message.reply("⚠️ لوحة التحكم مخصصة للمشرفين فقط.")
-                return
+                return await message.reply("⚠️ لوحة التحكم مخصصة للمشرفين فقط.")
 
-    # --- [ هنا يكمل كود عرض الأزرار الخاص بك ] ---
-    # مثال: kb = InlineKeyboardMarkup()... 
-    # await message.reply("⚙️ أهلاً بك في لوحة التحكم:", reply_markup=kb)
+    # إذا كان المطور أو قروب مفعل، تظهر اللوحة
+    txt = (f"👋 أهلاً بك في لوحة الإعدادات\n"
+           f"👑 المطور: <b>{OWNER_USERNAME}</b>")
     
-    return # إنهاء المهمة
+    await message.answer(txt, reply_markup=get_main_control_kb(user_id), parse_mode="HTML")
+    
 
 # التعديل في السطر 330 (أضفنا close_bot_)
 @dp.callback_query_handler(lambda c: c.data.startswith(('custom_add_', 'dev_', 'setup_quiz_', 'close_bot_', 'back_')), state="*")
