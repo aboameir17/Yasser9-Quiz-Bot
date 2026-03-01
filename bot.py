@@ -2149,47 +2149,65 @@ def is_answer_correct(user_msg, correct_ans):
     return False
 @dp.message_handler(lambda m: not m.text.startswith('/'))
 async def check_ans(m: types.Message):
+    """
+    رادار ياسر المطور (الرصد الهجين: خاص + عام) 📡
+    """
     cid = m.chat.id
     uid = m.from_user.id
     
-    # 1. التأكد أن هذه المجموعة جزء من مسابقة نشطة
-    if cid in active_quizzes and active_quizzes[cid]['active']:
+    # 1️⃣ التأكد أن هذه المجموعة في حالة مسابقة نشطة
+    quiz = active_quizzes.get(cid)
+    if not quiz or not quiz.get('active'):
+        return
         
-        user_raw = m.text.strip()
-        correct_raw = active_quizzes[cid]['ans']
+    user_raw = m.text.strip()
+    correct_raw = quiz['ans']
+    
+    # 2️⃣ ميزان العدل (فحص الإجابة الذكي)
+    if is_answer_correct(user_raw, correct_raw):
         
-        # 2. المنطق الذكي (ميزان العدل)
-        if is_answer_correct(user_raw, correct_raw):
+        # 3️⃣ التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
+        if not any(w['id'] == uid for w in quiz['winners']):
             
-            # 3. التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال (في مجموعته)
-            if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
-                
-                # تسجيل الفائز في ذاكرة السؤال
-                active_quizzes[cid]['winners'].append({
-                    "name": m.from_user.first_name, 
-                    "id": uid,
-                    "time": time.time() - active_quizzes[cid]['start_time']
-                })
-                
-                # 🔥 [إصلاح الإذاعة العامة] 🔥
-        if active_quizzes[cid].get('mode') == 'السرعة ⚡':
-            # نطلق صافرة النهاية في كل المجموعات المتصلة
-            for other_cid in list(active_quizzes.keys()):
-                quiz = active_quizzes[other_cid]
-                if quiz.get('active') and quiz.get('ans') == correct_raw:
-                    quiz['active'] = False
-                            # كذا السؤال "مات" في كل المجموعات فوراً بمجرد أول إجابة صحيحة
-        else:
-            # تسجيل المخطئين لعرضهم لاحقاً (اختياري)
-            if 'wrong_answers' not in active_quizzes[cid]:
-                active_quizzes[cid]['wrong_answers'] = []
+            # تسجيل الفائز في ذاكرة السؤال الحالية
+            quiz['winners'].append({
+                "name": m.from_user.first_name, 
+                "id": uid,
+                "time": round(time.time() - quiz['start_time'], 2)
+            })
             
-            u_name = m.from_user.first_name
-            if u_name not in active_quizzes[cid]['wrong_answers']:
-                # نتأكد أنه لم يجب صح قبل أن نسجله كمخطئ
-                if not any(w['id'] == uid for w in active_quizzes[cid]['winners']):
-                    active_quizzes[cid]['wrong_answers'].append(u_name)
-                            
+            # 🔥 [ منطق الإغلاق العالمي: خاص وعام ] 🔥
+            if quiz.get('mode') == 'السرعة ⚡':
+                # نجلب "شركاء الإذاعة" (لو خاصة بيكون قروبه بس، لو عامة بتكون كل القائمة)
+                participants = quiz.get('participants', [cid])
+                
+                for other_cid in participants:
+                    if other_cid in active_quizzes:
+                        # إغلاق السؤال فوراً في كل المجموعات المتصلة
+                        active_quizzes[other_cid]['active'] = False
+                        
+                        # تنبيه بسيط للقروبات الأخرى في حالة الإذاعة العامة
+                        if len(participants) > 1 and other_cid != cid:
+                            try:
+                                await bot.send_message(other_cid, f"🏁 <b>انتهى التحدي!</b>\nالبطل <b>{m.from_user.first_name}</b> خطف الإجابة من مجموعة أخرى! 🚀", parse_mode="HTML")
+                            except: pass
+                
+                # رد تأكيدي للفائز في مجموعته
+                await m.reply(f"🚀 <b>كفو يا وحش!</b>\nأسرع إجابة في {round(time.time() - quiz['start_time'], 2)} ثانية!", parse_mode="HTML")
+            else:
+                # إذا كان النمط "نقاط" (مو سرعة)، نرد عليه ونخليه يستمر
+                await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>", parse_mode="HTML")
+
+    else:
+        # 4️⃣ تسجيل المخطئين (اختياري للنتائج)
+        if 'wrong_answers' not in quiz:
+            quiz['wrong_answers'] = []
+        
+        u_name = m.from_user.first_name
+        if u_name not in quiz['wrong_answers']:
+            # نتأكد أنه لم يسبق له الفوز قبل تسجيله كمخطئ
+            if not any(w['id'] == uid for w in quiz['winners']):
+                quiz['wrong_answers'].append(u_name)
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
 class AdminStates(StatesGroup):
