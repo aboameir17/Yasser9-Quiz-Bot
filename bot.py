@@ -1868,24 +1868,33 @@ async def delete_after(message, delay):
 # ==========================================
 # [2] المحرك الموحد (نسخة الشات النظيف والترحيل 🧹💎)
 # ==========================================
-async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine_type):
+async def run_universal_logic(questions, quiz_data, owner_name, engine_type):
     """
     المحرك العالمي الأسطوري - نسخة ياسر 2026 🏆
-    يدعم: (الأسئلة العامة والخاصة) + (البث المتوازي) + (العداد التنازلي 5-3-1)
+    (الخطوات 1 إلى 5: سحب المجموعات، البث، الانتظار، والإغلاق)
     """
-    if not isinstance(chat_ids, list):
-        chat_ids = [chat_ids]
+    # 1️⃣ [الخطوة 1] جلب المجموعات النشطة من جدول groups_hub
+    try:
+        res = supabase.table("groups_hub")\
+            .select("group_id")\
+            .eq("status", "active")\
+            .eq("is_global", True)\
+            .execute()
+        chat_ids = [row['group_id'] for row in res.data]
+    except Exception as e:
+        logging.error(f"⚠️ خطأ في قاعدة البيانات: {e}")
+        return
+
+    if not chat_ids: return
 
     random.shuffle(questions)
     group_scores = {cid: {} for cid in chat_ids}
     is_pub = quiz_data.get('is_public', False)
     total_q = len(questions)
-    
-    # شنطة الحذف لتنظيف القروبات
     messages_to_delete = {cid: [] for cid in chat_ids}
 
     for i, q in enumerate(questions):
-        # 1️⃣ استخراج البيانات (عام أو خاص)
+        # 2️⃣ [الخطوة 2] تجهيز بيانات السؤال (عام أو خاص)
         if engine_type == "bot":
             ans = str(q.get('correct_answer') or q.get('answer') or "").strip()
             cat_name = q.get('category') or "عام 📁"
@@ -1894,15 +1903,20 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
             cat_info = q.get('categories', {})
             cat_name = cat_info.get('name', 'مكتبتي 🔒') if isinstance(cat_info, dict) else "خاص 🔒"
 
-        # 2️⃣ تفعيل الرادار لكل المجموعات قبل الإرسال
+        # 3️⃣ [الخطوة 3] تفعيل الرادار وربط المجموعات ببعضها
         for cid in chat_ids:
             active_quizzes[cid] = {
-                "active": True, "ans": ans, "winners": [], "wrong_answers": [],
-                "mode": quiz_data.get('mode', 'السرعة ⚡'), "hint_sent": False,
+                "active": True, 
+                "ans": ans, 
+                "winners": [], 
+                "wrong_answers": [],
+                "participants": chat_ids, # الربط العالمي
+                "mode": quiz_data.get('mode', 'السرعة ⚡'), 
+                "hint_sent": False,
                 "start_time": time.time()
             }
 
-        # 3️⃣ 🚀 بث السؤال لكل المجموعات في نفس اللحظة
+        # 4️⃣ [الخطوة 4] بث السؤال المتوازي لكل المجموعات
         q_tasks = [
             send_quiz_question(cid, q, i+1, total_q, {
                 'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
@@ -1914,12 +1928,18 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
         for idx, m in enumerate(q_msgs):
             if isinstance(m, types.Message): messages_to_delete[chat_ids[idx]].append(m.message_id)
 
-        # 4️⃣ محرك الانتظار ورصد الإجابات
+        # 5️⃣ [الخطوة 5] محرك الانتظار وإغلاق السؤال الذكي
         start_wait = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
         while time.time() - start_wait < t_limit:
-            if all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids): break
+            # التحقق: هل أغلق الرادار السؤال في كل المجموعات (بسبب إجابة سريعة)؟
+            if all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids): 
+                break
             await asyncio.sleep(0.4)
+
+        # إغلاق الحالة يدوياً لمن لم يجاوب بعد انتهاء الوقت
+        for cid in chat_ids:
+            if cid in active_quizzes: active_quizzes[cid]['active'] = False
 
         # 5️⃣ إغلاق السؤال وتوزيع النقاط وإرسال النتائج اللحظية
         res_tasks = []
