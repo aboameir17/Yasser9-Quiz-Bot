@@ -1931,55 +1931,62 @@ async def run_universal_logic(questions, quiz_data, owner_name, engine_type):
         # 5️⃣ [الخطوة 5] محرك الانتظار وإغلاق السؤال الذكي
         start_wait = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
+        
         while time.time() - start_wait < t_limit:
-            # التحقق: هل أغلق الرادار السؤال في كل المجموعات (بسبب إجابة سريعة)؟
+            # إذا الكل جاوبوا (نمط السرعة)، نكسر الانتظار فوراً
             if all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids): 
                 break
             await asyncio.sleep(0.4)
 
-        # إغلاق الحالة يدوياً لمن لم يجاوب بعد انتهاء الوقت
+        # ضمان إغلاق الحالة "active" لجميع المجموعات بعد انتهاء الوقت
         for cid in chat_ids:
-            if cid in active_quizzes: active_quizzes[cid]['active'] = False
+            if cid in active_quizzes:
+                active_quizzes[cid]['active'] = False
 
-        # 5️⃣ إغلاق السؤال وتوزيع النقاط وإرسال النتائج اللحظية
+        # 6️⃣ حساب النقاط وإرسال النتائج اللحظية (بث النتائج)
         res_tasks = []
         for cid in chat_ids:
-            active_quizzes[cid]['active'] = False # إغلاق الرادار
             winners = active_quizzes[cid].get('winners', [])
             wrongs = active_quizzes[cid].get('wrong_answers', [])
             
+            # توزيع النقاط في الذاكرة المؤقتة (للعرض فقط)
             for w in winners:
                 uid = w['id']
-                if uid not in group_scores[cid]: group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                group_scores[cid][uid]['points'] += 10 # نقاط الفوز
+                if uid not in group_scores[cid]:
+                    group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                group_scores[cid][uid]['points'] += 10
             
+            # مهمة إرسال نتيجة السؤال لكل قروب
             res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid], wrongs, is_pub))
         
+        # تنفيذ إرسال النتائج في كل القروبات معاً
         res_msgs = await asyncio.gather(*res_tasks, return_exceptions=True)
-        for idx, m in enumerate(res_msgs):
-            if isinstance(m, types.Message): messages_to_delete[chat_ids[idx]].append(m.message_id)
+        for m in res_msgs:
+            if isinstance(m, types.Message):
+                messages_to_delete[m.chat.id].append(m.message_id)
 
-        # 6️⃣ # --- [ العداد التنازلي المطور ] ---
+        # 7️⃣ [العداد التنازلي المطور]
         if i < total_q - 1:
-            # (كود العداد التنازلي الخاص بك كما هو - يحذف نفسه تلقائياً)
             emojis = {5: "5️⃣", 3: "3️⃣", 1: "1️⃣"}
             icons = {5: "🔴", 3: "🟡", 1: "🟢"}
-            countdown_msgs = []
-            for cid in chat_ids:
-                try:
-                    m = await bot.send_message(cid, f"{icons[5]} استعدوا.. السؤال التالي يبدأ بعد {emojis[5]} ثواني...")
-                    countdown_msgs.append(m)
-                except: pass
+            
+            # إرسال رسائل "استعد" لكل القروبات
+            count_tasks = [bot.send_message(cid, f"{icons[5]} استعدوا.. السؤال التالي يبدأ بعد {emojis[5]} ثواني...") for cid in chat_ids]
+            countdown_msgs = await asyncio.gather(*count_tasks, return_exceptions=True)
+            countdown_msgs = [m for m in countdown_msgs if isinstance(m, types.Message)]
+
             for count in [3, 1]: 
                 await asyncio.sleep(2)
-                for m in countdown_msgs:
-                    try: await bot.edit_message_text(f"{icons.get(count, '⚪')} استعدوا.. السؤال التالي بعد <b>{emojis[count]}</b> ثواني...", m.chat.id, m.message_id, parse_mode="HTML")
-                    except: break 
+                update_tasks = [bot.edit_message_text(f"{icons.get(count, '⚪')} استعدوا.. السؤال التالي بعد <b>{emojis[count]}</b> ثواني...", m.chat.id, m.message_id, parse_mode="HTML") for m in countdown_msgs]
+                await asyncio.gather(*update_tasks, return_exceptions=True)
+            
             await asyncio.sleep(1.2)
-            for m in countdown_msgs:
-                try: await bot.delete_message(m.chat.id, m.message_id)
-                except: pass
+            
+            # حذف العداد قبل السؤال القادم
+            delete_tasks = [bot.delete_message(m.chat.id, m.message_id) for m in countdown_msgs]
+            await asyncio.gather(*delete_tasks, return_exceptions=True)
         else:
+            # انتظار بسيط قبل النتائج النهائية للسؤال الأخير
             await asyncio.sleep(2)
 
     # ======================================================
