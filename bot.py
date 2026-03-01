@@ -1868,33 +1868,37 @@ async def delete_after(message, delay):
 # ==========================================
 # [2] المحرك الموحد (نسخة الشات النظيف والترحيل 🧹💎)
 # ==========================================
-async def run_universal_logic(questions, quiz_data, owner_name, engine_type):
+async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine_type):
     """
-    المحرك العالمي الأسطوري - نسخة ياسر 2026 🏆
-    (الخطوات 1 إلى 5: سحب المجموعات، البث، الانتظار، والإغلاق)
+    تم إضافة chat_ids كأول وسيط لحل مشكلة (takes 4 positional arguments but 5 were given)
     """
-    # 1️⃣ [الخطوة 1] جلب المجموعات النشطة من جدول groups_hub
+    # 1️⃣ [الخطوة 1] جلب مجموعات الإذاعة ودمجها مع المجموعات الممررة
     try:
         res = supabase.table("groups_hub")\
             .select("group_id")\
             .eq("status", "active")\
             .eq("is_global", True)\
             .execute()
-        chat_ids = [row['group_id'] for row in res.data]
+        
+        db_ids = [row['group_id'] for row in res.data]
+        
+        # دمج المجموعات القادمة من الزر مع مجموعات سوبابيس (بدون تكرار)
+        # نستخدم list(set(...)) لضمان عدم إرسال السؤال مرتين لنفس القروب
+        all_chats = list(set((chat_ids if isinstance(chat_ids, list) else [chat_ids]) + db_ids))
     except Exception as e:
         logging.error(f"⚠️ خطأ في قاعدة البيانات: {e}")
-        return
+        all_chats = chat_ids if isinstance(chat_ids, list) else [chat_ids]
 
-    if not chat_ids: return
+    if not all_chats: return
 
     random.shuffle(questions)
-    group_scores = {cid: {} for cid in chat_ids}
+    group_scores = {cid: {} for cid in all_chats}
     is_pub = quiz_data.get('is_public', False)
     total_q = len(questions)
-    messages_to_delete = {cid: [] for cid in chat_ids}
+    messages_to_delete = {cid: [] for cid in all_chats}
 
     for i, q in enumerate(questions):
-        # 2️⃣ [الخطوة 2] تجهيز بيانات السؤال (عام أو خاص)
+        # 2️⃣ [الخطوة 2] تجهيز بيانات السؤال
         if engine_type == "bot":
             ans = str(q.get('correct_answer') or q.get('answer') or "").strip()
             cat_name = q.get('category') or "عام 📁"
@@ -1904,30 +1908,30 @@ async def run_universal_logic(questions, quiz_data, owner_name, engine_type):
             cat_name = cat_info.get('name', 'مكتبتي 🔒') if isinstance(cat_info, dict) else "خاص 🔒"
 
         # 3️⃣ [الخطوة 3] تفعيل الرادار وربط المجموعات ببعضها
-        for cid in chat_ids:
+        for cid in all_chats:
             active_quizzes[cid] = {
                 "active": True, 
                 "ans": ans, 
                 "winners": [], 
                 "wrong_answers": [],
-                "participants": chat_ids, # الربط العالمي
+                "participants": all_chats, # الربط العالمي الفعال
                 "mode": quiz_data.get('mode', 'السرعة ⚡'), 
                 "hint_sent": False,
                 "start_time": time.time()
             }
 
-        # 4️⃣ [الخطوة 4] بث السؤال المتوازي لكل المجموعات
+        # 4️⃣ [الخطوة 4] بث السؤال المتوازي لكل المجموعات في all_chats
         q_tasks = [
             send_quiz_question(cid, q, i+1, total_q, {
                 'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
                 'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name,
                 'is_public': is_pub, 'source': "إذاعة البوت 🌍" if engine_type == "bot" else f"مكتبة {owner_name} 👤"
-            }) for cid in chat_ids
+            }) for cid in all_chats
         ]
         q_msgs = await asyncio.gather(*q_tasks, return_exceptions=True)
         for idx, m in enumerate(q_msgs):
-            if isinstance(m, types.Message): messages_to_delete[chat_ids[idx]].append(m.message_id)
-
+            if isinstance(m, types.Message): messages_to_delete[all_chats[idx]].append(m.message_id)
+                
         # 5️⃣ [الخطوة 5] محرك الانتظار وإغلاق السؤال الذكي
         start_wait = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
