@@ -2001,27 +2001,51 @@ async def run_universal_logic(questions, quiz_data, owner_name, engine_type):
             except:
                 pass
 
-    # ======================================================
-    # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
-    # ======================================================
-    for cid in chat_ids:
-        final_scores = group_scores.get(cid, {})
-        if final_scores:
-            # ✅ استدعاء لوحة الشرف (لا تحذفها أبداً لتظل ذكرى للفائزين)
-            await send_final_results(cid, final_scores, total_q, is_pub)
-        else:
-            try: await bot.send_message(cid, "🏁 انتهت المسابقة بدون نقاط سجلت.")
-            except: pass
+# ======================================================
+# --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
+# ======================================================
+async def sync_points_to_db(group_scores, is_pub):
+    """
+    الدالة 7 الملحقة: ترحيل النقاط النهائية من الذاكرة إلى حقول JSONB
+    """
+    for cid, scores in group_scores.items():
+        if not scores: continue
+        
+        try:
+            # 1. جلب البيانات الحالية للمجموعة (عشان ما نمسح النقاط القديمة)
+            res = supabase.table("groups_hub").select("group_members_points, global_users_points").eq("group_id", cid).single().execute()
+            
+            if res.data:
+                g_points = res.data.get('group_members_points') or {}
+                glob_points = res.data.get('global_users_points') or {}
 
-    # 🚀 ترحيل النقاط لجدول groups_hub
-    try:
-        await sync_points_to_db(group_scores, is_pub)
-    except Exception as e:
-        logging.error(f"⚠️ فشل ترحيل النقاط: {e}")
+                for uid, info in scores.items():
+                    uid_str = str(uid)
+                    earned_points = info['points']
+                    u_name = info['name']
 
-    # تنظيف الذاكرة
-    for cid in chat_ids:
-        if cid in active_quizzes: del active_quizzes[cid]
+                    # أ. تحديث نقاط المجموعة الداخلية
+                    if uid_str in g_points:
+                        g_points[uid_str]['points'] += earned_points
+                    else:
+                        g_points[uid_str] = {"name": u_name, "points": earned_points}
+
+                    # ب. تحديث النقاط العالمية (لو كانت الإذاعة عامة)
+                    if is_pub:
+                        if uid_str in glob_points:
+                            glob_points[uid_str]['points'] += earned_points
+                        else:
+                            glob_points[uid_str] = {"name": u_name, "points": earned_points}
+
+                # 2. رفع التحديث النهائي لسوبابيس
+                supabase.table("groups_hub").update({
+                    "group_members_points": g_points,
+                    "global_users_points": glob_points,
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("group_id", cid).execute()
+
+        except Exception as e:
+            logging.error(f"❌ خطأ ترحيل نقاط المجموعة {cid}: {e}")
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
