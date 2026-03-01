@@ -2038,92 +2038,72 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
     except Exception as e:
         # في حال فشل الماركدوان، نحاول إرساله بنص عادي لضمان عدم توقف المسابقة
         return await bot.send_message(chat_id, text.replace("*", "").replace("`", ""))
-# ==========================================
+# =======================================
 # 4. نظام رصد الإجابات الذكي (ياسر المطور)
 # ==========================================
 def is_answer_correct(user_msg, correct_ans):
     if not user_msg or not correct_ans: return False
 
     def clean_logic(text):
-        text = str(text).strip().lower()
-        # توحيد الحروف العربية (ا، ه، ي)
+        # 1. تنظيف أساسي (حذف المسافات وتحويل لصغير)
+        text = text.strip().lower()
+        # 2. توحيد الألفات (أإآ -> ا)
         text = re.sub(r'[أإآ]', 'ا', text)
+        # 3. توحيد التاء المربوطة (ة -> ه)
         text = re.sub(r'ة', 'ه', text)
+        # 4. توحيد الياء (ى -> ي)
         text = re.sub(r'ى', 'ي', text)
-        return ' '.join(text.split())
+        # 5. معالجة الواو الزائدة (مثل عمرو -> عمر)
+        if text.endswith('و') and len(text) > 3:
+            text = text[:-1]
+        # 6. حذف المسافات الزائدة بين الكلمات
+        text = ' '.join(text.split())
+        return text
 
-    u_clean = clean_logic(user_msg)
-    c_clean = clean_logic(correct_ans)
+    user_clean = clean_logic(user_msg)
+    correct_clean = clean_logic(correct_ans)
 
-    # 1. تطابق تام
-    if u_clean == c_clean: return True
-    # 2. نسبة تشابه 85% (للأخطاء الإملائية)
-    if difflib.SequenceMatcher(None, u_clean, c_clean).ratio() >= 0.85: return True
-    # 3. الكلمات الطويلة (احتواء)
-    if len(u_clean) >= 4 and (u_clean in c_clean or c_clean in u_clean): return True
-    
+    # 1. فحص التطابق التام
+    if user_clean == correct_clean:
+        return True
+
+    # 2. فحص الاحتواء (كلمة من إجابة طويلة)
+    if len(user_clean) > 3 and (user_clean in correct_clean or correct_clean in user_clean):
+        return True
+
+    # 3. فحص نسبة التشابه (تجاوز الأخطاء الإملائية 80%)
+    similarity = difflib.SequenceMatcher(None, user_clean, correct_clean).ratio()
+    if similarity >= 0.80:
+        return True
+
     return False
+
+# ---- رصد الإجابات (Check Answers) ----
 @dp.message_handler(lambda m: not m.text.startswith('/'))
 async def check_ans(m: types.Message):
-    """
-    رادار ياسر المطور (الرصد الهجين: خاص + عام) 📡
-    """
     cid = m.chat.id
-    uid = m.from_user.id
-    
-    # 1️⃣ التأكد أن هذه المجموعة في حالة مسابقة نشطة
-    quiz = active_quizzes.get(cid)
-    if not quiz or not quiz.get('active'):
-        return
+    # التأكد أن هناك مسابقة قائمة في هذه المجموعة
+    if cid in active_quizzes and active_quizzes[cid]['active']:
         
-    user_raw = m.text.strip()
-    correct_raw = quiz['ans']
-    
-    # 2️⃣ ميزان العدل (فحص الإجابة الذكي)
-    if is_answer_correct(user_raw, correct_raw):
+        user_raw = m.text
+        correct_raw = active_quizzes[cid]['ans']
         
-        # 3️⃣ التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-        if not any(w['id'] == uid for w in quiz['winners']):
+        # استخدام المنطق الذكي للتحقق
+        if is_answer_correct(user_raw, correct_raw):
             
-            # تسجيل الفائز في ذاكرة السؤال الحالية
-            quiz['winners'].append({
-                "name": m.from_user.first_name, 
-                "id": uid,
-                "time": round(time.time() - quiz['start_time'], 2)
-            })
-            
-            # 🔥 [ منطق الإغلاق العالمي: خاص وعام ] 🔥
-            if quiz.get('mode') == 'السرعة ⚡':
-                # نجلب "شركاء الإذاعة" (لو خاصة بيكون قروبه بس، لو عامة بتكون كل القائمة)
-                participants = quiz.get('participants', [cid])
+            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
+            if not any(w['id'] == m.from_user.id for w in active_quizzes[cid]['winners']):
                 
-                for other_cid in participants:
-                    if other_cid in active_quizzes:
-                        # إغلاق السؤال فوراً في كل المجموعات المتصلة
-                        active_quizzes[other_cid]['active'] = False
-                        
-                        # تنبيه بسيط للقروبات الأخرى في حالة الإذاعة العامة
-                        if len(participants) > 1 and other_cid != cid:
-                            try:
-                                await bot.send_message(other_cid, f"🏁 <b>انتهى التحدي!</b>\nالبطل <b>{m.from_user.first_name}</b> خطف الإجابة من مجموعة أخرى! 🚀", parse_mode="HTML")
-                            except: pass
+                active_quizzes[cid]['winners'].append({
+                    "name": m.from_user.first_name, 
+                    "id": m.from_user.id
+                })
                 
-                # رد تأكيدي للفائز في مجموعته
-                await m.reply(f"🚀 <b>كفو يا وحش!</b>\nأسرع إجابة في {round(time.time() - quiz['start_time'], 2)} ثانية!", parse_mode="HTML")
-            else:
-                # إذا كان النمط "نقاط" (مو سرعة)، نرد عليه ونخليه يستمر
-                await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>", parse_mode="HTML")
+                # إذا كان وضع المسابقة هو "السرعة"، نغلق السؤال فوراً
+                if active_quizzes[cid]['mode'] == 'السرعة ⚡':
+                    active_quizzes[cid]['active'] = False
 
-    else:
-        # 4️⃣ تسجيل المخطئين (اختياري للنتائج)
-        if 'wrong_answers' not in quiz:
-            quiz['wrong_answers'] = []
-        
-        u_name = m.from_user.first_name
-        if u_name not in quiz['wrong_answers']:
-            # نتأكد أنه لم يسبق له الفوز قبل تسجيله كمخطئ
-            if not any(w['id'] == uid for w in quiz['winners']):
-                quiz['wrong_answers'].append(u_name)
+# ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
 class AdminStates(StatesGroup):
