@@ -1869,7 +1869,10 @@ async def delete_after(message, delay):
 # [2] المحرك الموحد (نسخة الشات النظيف والترحيل 🧹💎)
 # ==========================================
 async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine_type):
-    """المحرك العالمي المكتمل والشامل - نسخة ياسر 2026 🏆"""
+    """
+    المحرك العالمي الأسطوري - نسخة ياسر 2026 🏆
+    يدعم: (الأسئلة العامة والخاصة) + (البث المتوازي) + (العداد التنازلي 5-3-1)
+    """
     if not isinstance(chat_ids, list):
         chat_ids = [chat_ids]
 
@@ -1877,85 +1880,66 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
     group_scores = {cid: {} for cid in chat_ids}
     is_pub = quiz_data.get('is_public', False)
     total_q = len(questions)
-
-    # ✅ الخطوة الثانية: تجهيز شنطة الحذف (Messages Box)
+    
+    # شنطة الحذف لتنظيف القروبات
     messages_to_delete = {cid: [] for cid in chat_ids}
 
     for i, q in enumerate(questions):
-        # 1. تحديد الإجابة والاسم حسب نوع المحرك
+        # 1️⃣ استخراج البيانات (عام أو خاص)
         if engine_type == "bot":
-            ans = str(q.get('correct_answer') or "").strip()
-            cat_name = q.get('category') or "ذكاء اصطناعي 🤖"
+            ans = str(q.get('correct_answer') or q.get('answer') or "").strip()
+            cat_name = q.get('category') or "عام 📁"
         else:
             ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
             cat_info = q.get('categories', {})
-            cat_name = cat_info.get('name', 'عام 📁') if isinstance(cat_info, dict) else "خاص 🔒"
+            cat_name = cat_info.get('name', 'مكتبتي 🔒') if isinstance(cat_info, dict) else "خاص 🔒"
 
-        # 2. تصفير الحالة لكل المجموعات المشاركة
+        # 2️⃣ تفعيل الرادار لكل المجموعات قبل الإرسال
         for cid in chat_ids:
             active_quizzes[cid] = {
-                "active": True, 
-                "ans": ans, 
-                "winners": [], 
-                "wrong_answers": [], # أضفناها لدعم قالب الإجابة
-                "mode": quiz_data.get('mode', 'السرعة ⚡'), 
-                "hint_sent": False,
+                "active": True, "ans": ans, "winners": [], "wrong_answers": [],
+                "mode": quiz_data.get('mode', 'السرعة ⚡'), "hint_sent": False,
                 "start_time": time.time()
             }
-            
-            # ✅ تعديل مهم: ننتظر السؤال (await) بدلاً من create_task لالتقاط الـ ID
-            q_msg = await send_quiz_question(cid, q, i+1, total_q, {
-                'owner_name': owner_name, 
-                'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-                'time_limit': quiz_data.get('time_limit', 15), 
-                'cat_name': cat_name,
-                'is_public': is_pub,
-                'source': "أسئلة البوت 🤖" if engine_type == "bot" else "مكتبتك الخاصة 👤"
-            })
-            if q_msg:
-                messages_to_delete[cid].append(q_msg.message_id)
-        
-        # 3. محرك الوقت الذكي ومراقبة الإجابات
-        start_time = time.time()
-        t_limit = int(quiz_data.get('time_limit', 15))
-        
-        while time.time() - start_time < t_limit:
-            all_done = all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids)
-            if all_done: break
-            
-            # منطق التلميح الذكي ✨
-            if quiz_data.get('smart_hint') and (time.time() - start_time) >= (t_limit / 2):
-                hint_text = await generate_smart_hint(ans) 
-                for cid in chat_ids:
-                    if not active_quizzes.get(cid, {}).get('active', False): continue
-                    if not active_quizzes[cid]['hint_sent']:
-                        try:
-                            h_msg = await bot.send_message(cid, f"💡 تلميح: <code>{hint_text}</code>", parse_mode="HTML")
-                            # ✅ إضافة التلميح لشنطة الحذف
-                            if h_msg: messages_to_delete[cid].append(h_msg.message_id)
-                            active_quizzes[cid]['hint_sent'] = True
-                        except: pass
-            await asyncio.sleep(0.5)
 
-         # 5. إنهاء السؤال وعرض النتائج اللحظية
+        # 3️⃣ 🚀 بث السؤال لكل المجموعات في نفس اللحظة
+        q_tasks = [
+            send_quiz_question(cid, q, i+1, total_q, {
+                'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+                'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name,
+                'is_public': is_pub, 'source': "إذاعة البوت 🌍" if engine_type == "bot" else f"مكتبة {owner_name} 👤"
+            }) for cid in chat_ids
+        ]
+        q_msgs = await asyncio.gather(*q_tasks, return_exceptions=True)
+        for idx, m in enumerate(q_msgs):
+            if isinstance(m, types.Message): messages_to_delete[chat_ids[idx]].append(m.message_id)
+
+        # 4️⃣ محرك الانتظار ورصد الإجابات
+        start_wait = time.time()
+        t_limit = int(quiz_data.get('time_limit', 15))
+        while time.time() - start_wait < t_limit:
+            if all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids): break
+            await asyncio.sleep(0.4)
+
+        # 5️⃣ إغلاق السؤال وتوزيع النقاط وإرسال النتائج اللحظية
+        res_tasks = []
         for cid in chat_ids:
-            if cid in active_quizzes:
-                active_quizzes[cid]['active'] = False
-                winners = active_quizzes[cid].get('winners', [])
-                wrongs = active_quizzes[cid].get('wrong_answers', [])
-                
-                for w in winners:
-                    uid = w['id']
-                    if uid not in group_scores[cid]:
-                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                    group_scores[cid][uid]['points'] += 10
+            active_quizzes[cid]['active'] = False # إغلاق الرادار
+            winners = active_quizzes[cid].get('winners', [])
+            wrongs = active_quizzes[cid].get('wrong_answers', [])
+            
+            for w in winners:
+                uid = w['id']
+                if uid not in group_scores[cid]: group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                group_scores[cid][uid]['points'] += 10 # نقاط الفوز
+            
+            res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid], wrongs, is_pub))
         
-                # ✅ التقاط رسالة النتائج اللحظية للحذف
-                res_msg = await send_creative_results(cid, ans, winners, group_scores, wrongs, is_pub)
-                if res_msg:
-                    messages_to_delete[cid].append(res_msg.message_id)
-        
-        # --- [ العداد التنازلي المطور ] ---
+        res_msgs = await asyncio.gather(*res_tasks, return_exceptions=True)
+        for idx, m in enumerate(res_msgs):
+            if isinstance(m, types.Message): messages_to_delete[chat_ids[idx]].append(m.message_id)
+
+        # 6️⃣ # --- [ العداد التنازلي المطور ] ---
         if i < total_q - 1:
             # (كود العداد التنازلي الخاص بك كما هو - يحذف نفسه تلقائياً)
             emojis = {5: "5️⃣", 3: "3️⃣", 1: "1️⃣"}
