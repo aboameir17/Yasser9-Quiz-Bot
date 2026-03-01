@@ -2076,37 +2076,23 @@ def is_answer_correct(user_msg, correct_ans):
     if not user_msg or not correct_ans: return False
 
     def clean_logic(text):
-        # 1. تنظيف أساسي (حذف المسافات وتحويل لصغير)
-        text = text.strip().lower()
-        # 2. توحيد الألفات (أإآ -> ا)
+        text = str(text).strip().lower()
+        # توحيد الحروف العربية (ا، ه، ي)
         text = re.sub(r'[أإآ]', 'ا', text)
-        # 3. توحيد التاء المربوطة (ة -> ه)
         text = re.sub(r'ة', 'ه', text)
-        # 4. توحيد الياء (ى -> ي)
         text = re.sub(r'ى', 'ي', text)
-        # 5. معالجة الواو الزائدة (مثل عمرو -> عمر)
-        if text.endswith('و') and len(text) > 3:
-            text = text[:-1]
-        # 6. حذف المسافات الزائدة بين الكلمات
-        text = ' '.join(text.split())
-        return text
+        return ' '.join(text.split())
 
-    user_clean = clean_logic(user_msg)
-    correct_clean = clean_logic(correct_ans)
+    u_clean = clean_logic(user_msg)
+    c_clean = clean_logic(correct_ans)
 
-    # 1. فحص التطابق التام
-    if user_clean == correct_clean:
-        return True
-
-    # 2. فحص الاحتواء (كلمة من إجابة طويلة)
-    if len(user_clean) > 3 and (user_clean in correct_clean or correct_clean in user_clean):
-        return True
-
-    # 3. فحص نسبة التشابه (تجاوز الأخطاء الإملائية 80%)
-    similarity = difflib.SequenceMatcher(None, user_clean, correct_clean).ratio()
-    if similarity >= 0.80:
-        return True
-
+    # 1. تطابق تام
+    if u_clean == c_clean: return True
+    # 2. نسبة تشابه 85% (للأخطاء الإملائية)
+    if difflib.SequenceMatcher(None, u_clean, c_clean).ratio() >= 0.85: return True
+    # 3. الكلمات الطويلة (احتواء)
+    if len(u_clean) >= 4 and (u_clean in c_clean or c_clean in u_clean): return True
+    
     return False
 @dp.message_handler(lambda m: not m.text.startswith('/'))
 async def check_ans(m: types.Message):
