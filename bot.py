@@ -50,6 +50,82 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 active_quizzes = {}
 
 # ==========================================
+# 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
+# ==========================================
+
+# [2] دالة إعلان تفاصيل المسابقة (المصلحة)
+async def announce_quiz_type(chat_id, quiz_data, engine_type):
+    """إعلان تفاصيل المسابقة بناءً على عمود is_public الحقيقي"""
+    source_map = {
+        "bot": "أسئلة البوت الذكية 🤖", 
+        "user": "أسئلة المستخدم الخاصة 👤"
+    }
+    source_text = source_map.get(engine_type, "قاعدة بيانات خاصة 🔒")
+    
+    q_name = quiz_data.get('quiz_name', 'تحدي جديد')
+    q_count = quiz_data.get('questions_count', 10)
+    q_time = quiz_data.get('time_limit', 15)
+    q_mode = quiz_data.get('mode', 'السرعة ⚡')
+    
+    # 🛠️ التصحيح الحقيقي هنا:
+    is_pub = quiz_data.get('is_public', False)
+    q_scope = "إذاعة عامة 🌐" if is_pub is True else "مسابقة داخلية 📍"
+    
+    announcement = (
+        f"📊 **تفاصيل المسابقة المنطلقة:**\n"
+        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
+        f"🏆 الاسم: **{q_name}**\n"
+        f"📁 المصدر: `{source_text}`\n"
+        f"📡 النطاق: **{q_scope}**\n"
+        f"🔢 عدد الأسئلة: `{q_count}`\n"
+        f"⏳ وقت السؤال: `{q_time} ثانية`\n"
+        f"🔖 النظام: **{q_mode}**\n"
+        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
+        f"⏳ **استعدوا.. السؤال الأول سيبدأ خلال 3 ثواني!**"
+    )
+    
+    try:
+        msg = await bot.send_message(chat_id, announcement, parse_mode="Markdown")
+        await asyncio.sleep(3) 
+        await msg.delete() 
+    except Exception as e:
+        logging.error(f"Error in announcement: {e}")
+
+# [3] دالة قالب السؤال (المصلحة)
+async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
+    """
+    قالب السؤال - تصميم ياسر المطور 2026
+    المميزات: دعم النطاق، عرض المصدر، والعودة بكائن الرسالة للحذف.
+    """
+    # 1. تحديد النطاق (إذاعة عامة أو مسابقة داخلية)
+    is_pub = settings.get('is_public', False) 
+    q_scope = "إذاعة عامة 🌐" if is_pub else "مسابقة داخلية 📍"
+    
+    # 2. جلب نص السؤال ومصدره
+    source = settings.get('source', 'قاعدة البيانات')
+    # فحص محتوى السؤال في حال كان من البوت أو من مكتبتك
+    q_text = q_data.get('question_content') or q_data.get('question_text') or "⚠️ نص السؤال مفقود!"
+    
+    # 3. تنسيق نص الرسالة الفخم
+    text = (
+        f"🎓 **الـمنـظـم:** {settings['owner_name']} ☁️\n"
+        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
+        f"📌 **السؤال:** « {current_num} » من « {total_num} »\n"
+        f"📂 **القسم:** `{settings['cat_name']}`\n"
+        f"🛠 **المصدر:** `{source}`\n"
+        f"📡 **النطاق:** **{q_scope}**\n"
+        f"⏳ **المهلة:** {settings['time_limit']} ثانية\n"
+        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
+        f"❓ **السؤال:**\n**{q_text}**"
+    )
+    
+    # 4. الإرسال مع return (ضروري جداً لمحرك الحذف)
+    try:
+        return await bot.send_message(chat_id, text, parse_mode='Markdown')
+    except Exception as e:
+        # في حال فشل الماركدوان، نحاول إرساله بنص عادي لضمان عدم توقف المسابقة
+        return await bot.send_message(chat_id, text.replace("*", "").replace("`", ""))
+# ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
 async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
@@ -214,6 +290,7 @@ def get_categories_kb(user_id):
     kb.add(InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_main_{user_id}"))
     
     return kb
+
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
@@ -264,6 +341,8 @@ def get_setup_quiz_kb(user_id):
         InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
     )
     return kb
+
+
 # ==========================================
 # الدوال المساعدة المحدثة (حماية + أسماء حقيقية)
 # ==========================================
@@ -1929,83 +2008,6 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
     # 7. إعلان لوحة الشرف النهائية
     await send_final_results(chat_id, overall_scores, len(questions))
                 
-
-# ==========================================
-# 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
-# ==========================================
-
-# [2] دالة إعلان تفاصيل المسابقة (المصلحة)
-async def announce_quiz_type(chat_id, quiz_data, engine_type):
-    """إعلان تفاصيل المسابقة بناءً على عمود is_public الحقيقي"""
-    source_map = {
-        "bot": "أسئلة البوت الذكية 🤖", 
-        "user": "أسئلة المستخدم الخاصة 👤"
-    }
-    source_text = source_map.get(engine_type, "قاعدة بيانات خاصة 🔒")
-    
-    q_name = quiz_data.get('quiz_name', 'تحدي جديد')
-    q_count = quiz_data.get('questions_count', 10)
-    q_time = quiz_data.get('time_limit', 15)
-    q_mode = quiz_data.get('mode', 'السرعة ⚡')
-    
-    # 🛠️ التصحيح الحقيقي هنا:
-    is_pub = quiz_data.get('is_public', False)
-    q_scope = "إذاعة عامة 🌐" if is_pub is True else "مسابقة داخلية 📍"
-    
-    announcement = (
-        f"📊 **تفاصيل المسابقة المنطلقة:**\n"
-        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
-        f"🏆 الاسم: **{q_name}**\n"
-        f"📁 المصدر: `{source_text}`\n"
-        f"📡 النطاق: **{q_scope}**\n"
-        f"🔢 عدد الأسئلة: `{q_count}`\n"
-        f"⏳ وقت السؤال: `{q_time} ثانية`\n"
-        f"🔖 النظام: **{q_mode}**\n"
-        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
-        f"⏳ **استعدوا.. السؤال الأول سيبدأ خلال 3 ثواني!**"
-    )
-    
-    try:
-        msg = await bot.send_message(chat_id, announcement, parse_mode="Markdown")
-        await asyncio.sleep(3) 
-        await msg.delete() 
-    except Exception as e:
-        logging.error(f"Error in announcement: {e}")
-
-# [3] دالة قالب السؤال (المصلحة)
-async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
-    """
-    قالب السؤال - تصميم ياسر المطور 2026
-    المميزات: دعم النطاق، عرض المصدر، والعودة بكائن الرسالة للحذف.
-    """
-    # 1. تحديد النطاق (إذاعة عامة أو مسابقة داخلية)
-    is_pub = settings.get('is_public', False) 
-    q_scope = "إذاعة عامة 🌐" if is_pub else "مسابقة داخلية 📍"
-    
-    # 2. جلب نص السؤال ومصدره
-    source = settings.get('source', 'قاعدة البيانات')
-    # فحص محتوى السؤال في حال كان من البوت أو من مكتبتك
-    q_text = q_data.get('question_content') or q_data.get('question_text') or "⚠️ نص السؤال مفقود!"
-    
-    # 3. تنسيق نص الرسالة الفخم
-    text = (
-        f"🎓 **الـمنـظـم:** {settings['owner_name']} ☁️\n"
-        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
-        f"📌 **السؤال:** « {current_num} » من « {total_num} »\n"
-        f"📂 **القسم:** `{settings['cat_name']}`\n"
-        f"🛠 **المصدر:** `{source}`\n"
-        f"📡 **النطاق:** **{q_scope}**\n"
-        f"⏳ **المهلة:** {settings['time_limit']} ثانية\n"
-        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
-        f"❓ **السؤال:**\n**{q_text}**"
-    )
-    
-    # 4. الإرسال مع return (ضروري جداً لمحرك الحذف)
-    try:
-        return await bot.send_message(chat_id, text, parse_mode='Markdown')
-    except Exception as e:
-        # في حال فشل الماركدوان، نحاول إرساله بنص عادي لضمان عدم توقف المسابقة
-        return await bot.send_message(chat_id, text.replace("*", "").replace("`", ""))
 # =======================================
 # 4. نظام رصد الإجابات الذكي (ياسر المطور)
 # ==========================================
