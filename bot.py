@@ -48,64 +48,32 @@ dp = Dispatcher(bot, storage=storage)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 active_quizzes = {}
+
 # ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
-async def send_creative_results(chat_id, correct_ans, winners, group_scores, wrong_answers=None, is_public=False):
-    """قالب ياسر المطور: ذكاء اصطناعي في عرض النتائج والترتيب (نسخة الحذف النظيف)"""
-    msg = "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
+async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
+    """تصميم ياسر المطور: دمج الفائزين والترتيب في رسالة واحدة"""
+    msg =  "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n"
     msg += f"✅ الإجابة الصحيحة: <b>{correct_ans}</b>\n"
-    msg += "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
-
-    # 1. شرط المتفوقين (من كل المجموعات)
-    if winners:
-        msg += "❃┄┄┄┈•{المتفوقين🧑‍🎓}•┈┄┄┄❃\n"
-        # ترتيب حسب السرعة (الوقت)
-        sorted_winners = sorted(winners, key=lambda x: x.get('time', 0))
-        for i, w in enumerate(sorted_winners, 1):
-            msg += f"{i}- {w['name']} ⚡\n"
-        msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈\n"
-    else:
-        msg += "❌ لم ينجح أحد في الإجابة الصحيحة\n"
-        msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈\n"
-
-    # 2. شرط أصحاب الإجابات الخاطئة
-    if wrong_answers:
-        msg += "❃┄┄┄┈•{إجابات خاطئة ❌}•┈┄┄┄❃\n"
-        # عرض أسماء اللاعبين فقط الذين أخطأوا
-        wrong_names = [f"👤 {name}" for name in wrong_answers]
-        msg += " | ".join(wrong_names) + "\n"
-        msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈\n"
-
-    # 3. شرط الترتيب (عام vs خاص)
-    msg += "\n❃┄┄┄┈•{الترتيب 📊}•┈┄┄┄❃\n"
+    msg += "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n\n"
     
-    if is_public:
-        # نطاق عام: عرض المجموعات ولاعبيها
-        for gid, players in group_scores.items():
-            if not players: continue
-            
-            # حساب إجمالي نقاط المجموعة
-            total_group_points = sum(p['points'] for p in players.values())
-            msg += f"🏘 <b>مجموعة: {gid}</b> (🏆 {total_group_points})\n"
-            
-            # ترتيب اللاعبين داخل هذه المجموعة
-            sorted_players = sorted(players.values(), key=lambda x: x['points'], reverse=True)
-            for p in sorted_players:
-                msg += f"┗ 👤 {p['name']} — {p['points']}\n"
-            
-            msg += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n" # سطر فاصل بين المجموعات
+    if winners:
+        msg += "❃─── { جواب صح} ───❃\n"
+        for i, w in enumerate(winners, 1):
+            msg += f"{i}- {w['name']} (+10)\n"
     else:
-        # نطاق خاص: ترتيب اللاعبين فقط
-        # التأكد من وجود بيانات للمجموعة الحالية لتجنب الخطأ
-        current_data = group_scores.get(chat_id, {})
-        sorted_players = sorted(current_data.values(), key=lambda x: x['points'], reverse=True)
-        medals = ["🥇", "🥈", "🥉"]
-        for i, p in enumerate(sorted_players[:5]):
-            medal = medals[i] if i < 3 else "👤"
-            msg += f"{medal} <b>{p['name']}</b> — {p['points']}\n"
-            msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈\n" # سطر بين اللاعبين
-
+        msg += "❌ لم ينجح أحد في الإجابة على هذا السؤال\n"
+    
+    leaderboard = sorted(overall_scores.values(), key=lambda x: x['points'], reverse=True)
+    msg += "\n❃─── { الترتيب} ───❃\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for i, player in enumerate(leaderboard[:3]):
+        medal = medals[i] if i < 3 else "👤"
+        msg += f"{medal} {player['name']} — {player['points']}\n"
+    
+    await bot.send_message(chat_id, msg, parse_mode="HTML")
+    
     # ✅ التعديل الجوهري هنا: أضفنا return ليعود كائن الرسالة للمحرك
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
     
