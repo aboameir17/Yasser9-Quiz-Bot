@@ -1943,27 +1943,29 @@ async def run_universal_logic(questions, quiz_data, owner_name, engine_type):
             if cid in active_quizzes:
                 active_quizzes[cid]['active'] = False
 
-        # 6️⃣ حساب النقاط وإرسال النتائج اللحظية (بث النتائج)
+        # 6️⃣ حساب النقاط، حفظها في سوبابيس، وإرسال النتائج اللحظية
         res_tasks = []
         for cid in chat_ids:
             winners = active_quizzes[cid].get('winners', [])
             wrongs = active_quizzes[cid].get('wrong_answers', [])
             
-            # توزيع النقاط في الذاكرة المؤقتة (للعرض فقط)
+            # أ. توزيع النقاط في الذاكرة (للعرض الفوري في الرسالة)
             for w in winners:
                 uid = w['id']
                 if uid not in group_scores[cid]:
                     group_scores[cid][uid] = {"name": w['name'], "points": 0}
                 group_scores[cid][uid]['points'] += 10
             
-            # مهمة إرسال نتيجة السؤال لكل قروب
+            # 🔥 ب. [الدالة 7] حفظ النقاط في قاعدة البيانات (Supabase)
+            # نستخدم asyncio.create_task لكي لا يتوقف البوت عن إرسال النتائج بينما يحفظ في القاعدة
+            if winners:
+                asyncio.create_task(save_points_to_supabase(cid, winners))
+            
+            # ج. مهمة إرسال رسالة النتيجة للقروب
             res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid], wrongs, is_pub))
         
         # تنفيذ إرسال النتائج في كل القروبات معاً
         res_msgs = await asyncio.gather(*res_tasks, return_exceptions=True)
-        for m in res_msgs:
-            if isinstance(m, types.Message):
-                messages_to_delete[m.chat.id].append(m.message_id)
 
         # 7️⃣ [العداد التنازلي المطور]
         if i < total_q - 1:
