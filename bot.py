@@ -1866,198 +1866,102 @@ async def delete_after(message, delay):
         pass
 
 # ==========================================
-# [2] المحرك الموحد (نسخة الشات النظيف والترحيل 🧹💎)
+# [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
-async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine_type):
-    """
-    تم إضافة chat_ids كأول وسيط لحل مشكلة (takes 4 positional arguments but 5 were given)
-    """
-    # 1️⃣ [الخطوة 1] جلب مجموعات الإذاعة ودمجها مع المجموعات الممررة
-    try:
-        res = supabase.table("groups_hub")\
-            .select("group_id")\
-            .eq("status", "active")\
-            .eq("is_global", True)\
-            .execute()
-        
-        db_ids = [row['group_id'] for row in res.data]
-        
-        # دمج المجموعات القادمة من الزر مع مجموعات سوبابيس (بدون تكرار)
-        # نستخدم list(set(...)) لضمان عدم إرسال السؤال مرتين لنفس القروب
-        all_chats = list(set((chat_ids if isinstance(chat_ids, list) else [chat_ids]) + db_ids))
-    except Exception as e:
-        logging.error(f"⚠️ خطأ في قاعدة البيانات: {e}")
-        all_chats = chat_ids if isinstance(chat_ids, list) else [chat_ids]
-
-    if not all_chats: return
-
+async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_type):
     random.shuffle(questions)
-    group_scores = {cid: {} for cid in all_chats}
-    is_pub = quiz_data.get('is_public', False)
-    total_q = len(questions)
-    messages_to_delete = {cid: [] for cid in all_chats}
+    overall_scores = {}
 
     for i, q in enumerate(questions):
-        # 2️⃣ [الخطوة 2] تجهيز بيانات السؤال
+        # 1. استخراج الإجابة والنص حسب نوع المصدر
         if engine_type == "bot":
-            ans = str(q.get('correct_answer') or q.get('answer') or "").strip()
-            cat_name = q.get('category') or "عام 📁"
-        else:
+            ans = str(q.get('correct_answer') or "").strip()
+            cat_name = q.get('category') or "بوت"
+        elif engine_type == "user":
             ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
-            cat_info = q.get('categories', {})
-            cat_name = cat_info.get('name', 'مكتبتي 🔒') if isinstance(cat_info, dict) else "خاص 🔒"
-
-        # 3️⃣ [الخطوة 3] تفعيل الرادار وربط المجموعات ببعضها
-        for cid in all_chats:
-            active_quizzes[cid] = {
-                "active": True, 
-                "ans": ans, 
-                "winners": [], 
-                "wrong_answers": [],
-                "participants": all_chats, # الربط العالمي الفعال
-                "mode": quiz_data.get('mode', 'السرعة ⚡'), 
-                "hint_sent": False,
-                "start_time": time.time()
-            }
-
-        # 4️⃣ [الخطوة 4] بث السؤال المتوازي لكل المجموعات في all_chats
-        q_tasks = [
-            send_quiz_question(cid, q, i+1, total_q, {
-                'owner_name': owner_name, 
-                'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-                'time_limit': quiz_data.get('time_limit', 15), 
-                'cat_name': cat_name,
-                'is_public': is_pub, 
-                'source': "إذاعة البوت 🌍" if engine_type == "bot" else f"مكتبة {owner_name} 👤"
-            }) for cid in all_chats
-        ]
-        
-        q_msgs = await asyncio.gather(*q_tasks, return_exceptions=True)
-        
-        # حفظ الـ ID للرسائل المبعوثة في كل مجموعة
-        for idx, m in enumerate(q_msgs):
-            if isinstance(m, types.Message):
-                messages_to_delete[all_chats[idx]].append(m.message_id)
-                
-        # 5️⃣ [الخطوة 5] محرك الانتظار وإغلاق السؤال الذكي (تعديل all_chats)
-        start_wait = time.time()
-        t_limit = int(quiz_data.get('time_limit', 15))
-        
-        while time.time() - start_wait < t_limit:
-            # الفحص الآن يشمل كل المجموعات المربوطة (all_chats)
-            # إذا توقف النشاط في الجميع (بسبب إجابة سريعة)، نكسر الانتظار
-            if all(not active_quizzes.get(cid, {}).get('active', False) for cid in all_chats): 
-                break
-            await asyncio.sleep(0.4)
-
-        # ضمان إغلاق الحالة "active" لجميع المجموعات بعد انتهاء الوقت
-        for cid in chat_ids:
-            if cid in active_quizzes:
-                active_quizzes[cid]['active'] = False
-
-        # 6️⃣ حساب النقاط، حفظها في سوبابيس، وإرسال النتائج اللحظية
-        res_tasks = []
-        for cid in chat_ids:
-            winners = active_quizzes[cid].get('winners', [])
-            wrongs = active_quizzes[cid].get('wrong_answers', [])
-            
-            # أ. توزيع النقاط في الذاكرة (للعرض الفوري في الرسالة)
-            for w in winners:
-                uid = w['id']
-                if uid not in group_scores[cid]:
-                    group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                group_scores[cid][uid]['points'] += 10
-            
-            # 🔥 ب. [الدالة 7] حفظ النقاط في قاعدة البيانات (Supabase)
-            # نستخدم asyncio.create_task لكي لا يتوقف البوت عن إرسال النتائج بينما يحفظ في القاعدة
-            if winners:
-                asyncio.create_task(save_points_to_supabase(cid, winners))
-            
-            # ج. مهمة إرسال رسالة النتيجة للقروب
-            res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid], wrongs, is_pub))
-        
-        # تنفيذ إرسال النتائج في كل القروبات معاً
-        res_msgs = await asyncio.gather(*res_tasks, return_exceptions=True)
-
-        # 7️⃣ [العداد التنازلي المطور]
-        if i < total_q - 1:
-            emojis = {5: "5️⃣", 3: "3️⃣", 1: "1️⃣"}
-            icons = {5: "🔴", 3: "🟡", 1: "🟢"}
-            
-            # إرسال رسائل "استعد" لكل القروبات
-            count_tasks = [bot.send_message(cid, f"{icons[5]} استعدوا.. السؤال التالي يبدأ بعد {emojis[5]} ثواني...") for cid in chat_ids]
-            countdown_msgs = await asyncio.gather(*count_tasks, return_exceptions=True)
-            countdown_msgs = [m for m in countdown_msgs if isinstance(m, types.Message)]
-
-            for count in [3, 1]: 
-                await asyncio.sleep(2)
-                update_tasks = [bot.edit_message_text(f"{icons.get(count, '⚪')} استعدوا.. السؤال التالي بعد <b>{emojis[count]}</b> ثواني...", m.chat.id, m.message_id, parse_mode="HTML") for m in countdown_msgs]
-                await asyncio.gather(*update_tasks, return_exceptions=True)
-            
-            await asyncio.sleep(1.2)
-            
-            # حذف العداد قبل السؤال القادم
-            delete_tasks = [bot.delete_message(m.chat.id, m.message_id) for m in countdown_msgs]
-            await asyncio.gather(*delete_tasks, return_exceptions=True)
+            cat_name = q['categories']['name'] if q.get('categories') else "عام"
         else:
-            # انتظار بسيط قبل النتائج النهائية للسؤال الأخير
-            await asyncio.sleep(2)
+            ans = str(q.get('correct_answer') or q.get('ans') or "").strip()
+            cat_name = "قسم خاص 🔒"
 
-    # ======================================================
-    # --- [ 🧹 اللمسة الأخيرة: تنظيف الشات الشامل ] ---
-    # ======================================================
-    for cid in chat_ids:
-        for mid in messages_to_delete.get(cid, []):
-            try:
-                await bot.delete_message(cid, mid)
-            except:
-                pass
-
-# ======================================================
-# --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
-# ======================================================
-async def sync_points_to_db(group_scores, is_pub):
-    """
-    الدالة 7 الملحقة: ترحيل النقاط النهائية من الذاكرة إلى حقول JSONB
-    """
-    for cid, scores in group_scores.items():
-        if not scores: continue
+        # 2. تصفير حالة السؤال وتجهيز الذاكرة النشطة
+        active_quizzes[chat_id] = {
+            "active": True, 
+            "ans": ans, 
+            "winners": [], 
+            "mode": quiz_data['mode'], 
+            "hint_sent": False
+        }
         
-        try:
-            # 1. جلب البيانات الحالية للمجموعة (عشان ما نمسح النقاط القديمة)
-            res = supabase.table("groups_hub").select("group_members_points, global_users_points").eq("group_id", cid).single().execute()
+        # 3. إرسال قالب السؤال للقروب
+        await send_quiz_question(chat_id, q, i+1, len(questions), {
+            'owner_name': owner_name, 
+            'mode': quiz_data['mode'], 
+            'time_limit': quiz_data['time_limit'], 
+            'cat_name': cat_name
+        })
+        
+        # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
+        start_time = time.time()
+        t_limit = int(quiz_data.get('time_limit', 15))
+        h_msg = None 
+        
+        while time.time() - start_time < t_limit:
+            if not active_quizzes.get(chat_id) or not active_quizzes[chat_id]['active']:
+                break
             
-            if res.data:
-                g_points = res.data.get('group_members_points') or {}
-                glob_points = res.data.get('global_users_points') or {}
+            if quiz_data.get('smart_hint') and not active_quizzes[chat_id]['hint_sent']:
+                if (time.time() - start_time) >= (t_limit / 2):
+                    try:
+                        hint_text = await generate_smart_hint(ans)
+                        h_msg = await bot.send_message(chat_id, hint_text, parse_mode="HTML")
+                        active_quizzes[chat_id]['hint_sent'] = True
+                    except Exception as e:
+                        logging.error(f"⚠️ خطأ في التلميح: {e}")
 
-                for uid, info in scores.items():
-                    uid_str = str(uid)
-                    earned_points = info['points']
-                    u_name = info['name']
+            await asyncio.sleep(0.5)
 
-                    # أ. تحديث نقاط المجموعة الداخلية
-                    if uid_str in g_points:
-                        g_points[uid_str]['points'] += earned_points
-                    else:
-                        g_points[uid_str] = {"name": u_name, "points": earned_points}
+        if h_msg:
+            asyncio.create_task(delete_after(h_msg, 0))
 
-                    # ب. تحديث النقاط العالمية (لو كانت الإذاعة عامة)
-                    if is_pub:
-                        if uid_str in glob_points:
-                            glob_points[uid_str]['points'] += earned_points
-                        else:
-                            glob_points[uid_str] = {"name": u_name, "points": earned_points}
+        # 5. إنهاء السؤال وحساب النقاط
+        if chat_id in active_quizzes:
+            active_quizzes[chat_id]['active'] = False
+            for w in active_quizzes[chat_id]['winners']:
+                uid = w['id']
+                if uid not in overall_scores: 
+                    overall_scores[uid] = {"name": w['name'], "points": 0}
+                overall_scores[uid]['points'] += 10
+        
+            # 6. عرض لوحة المبدعين اللحظية
+            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
+        
+        # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
+        if i < len(questions) - 1:
+            icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
+            try:
+                countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
+                
+                # سنقوم بالتحديث كل ثانية ونصف أو ثانيتين لتقليل الضغط
+                for count in range(4, 0, -2): # تقليل عدد التحديثات (تحديث كل ثانيتين)
+                    await asyncio.sleep(2)
+                    icon = icons[count] if count < len(icons) else "⚪"
+                    try:
+                        await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
+                    except Exception as e:
+                        logging.warning(f"Flood avoidance: {e}")
+                        break # توقف عن التحديث إذا ضغط التليجرام
+                
+                await asyncio.sleep(1.5)
+                await countdown_msg.delete()
+            except Exception as e:
+                logging.error(f"Countdown Error: {e}")
+        else:
+            await asyncio.sleep(2)
+    # 7. إعلان لوحة الشرف النهائية
+    await send_final_results(chat_id, overall_scores, len(questions))
+                
 
-                # 2. رفع التحديث النهائي لسوبابيس
-                supabase.table("groups_hub").update({
-                    "group_members_points": g_points,
-                    "global_users_points": glob_points,
-                    "updated_at": datetime.utcnow().isoformat()
-                }).eq("group_id", cid).execute()
-
-        except Exception as e:
-            logging.error(f"❌ خطأ ترحيل نقاط المجموعة {cid}: {e}")
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
