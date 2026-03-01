@@ -1923,22 +1923,30 @@ async def run_universal_logic(chat_ids, questions, quiz_data, owner_name, engine
         # 4️⃣ [الخطوة 4] بث السؤال المتوازي لكل المجموعات في all_chats
         q_tasks = [
             send_quiz_question(cid, q, i+1, total_q, {
-                'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-                'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name,
-                'is_public': is_pub, 'source': "إذاعة البوت 🌍" if engine_type == "bot" else f"مكتبة {owner_name} 👤"
+                'owner_name': owner_name, 
+                'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+                'time_limit': quiz_data.get('time_limit', 15), 
+                'cat_name': cat_name,
+                'is_public': is_pub, 
+                'source': "إذاعة البوت 🌍" if engine_type == "bot" else f"مكتبة {owner_name} 👤"
             }) for cid in all_chats
         ]
+        
         q_msgs = await asyncio.gather(*q_tasks, return_exceptions=True)
+        
+        # حفظ الـ ID للرسائل المبعوثة في كل مجموعة
         for idx, m in enumerate(q_msgs):
-            if isinstance(m, types.Message): messages_to_delete[all_chats[idx]].append(m.message_id)
+            if isinstance(m, types.Message):
+                messages_to_delete[all_chats[idx]].append(m.message_id)
                 
-        # 5️⃣ [الخطوة 5] محرك الانتظار وإغلاق السؤال الذكي
+        # 5️⃣ [الخطوة 5] محرك الانتظار وإغلاق السؤال الذكي (تعديل all_chats)
         start_wait = time.time()
         t_limit = int(quiz_data.get('time_limit', 15))
         
         while time.time() - start_wait < t_limit:
-            # إذا الكل جاوبوا (نمط السرعة)، نكسر الانتظار فوراً
-            if all(not active_quizzes.get(cid, {}).get('active', False) for cid in chat_ids): 
+            # الفحص الآن يشمل كل المجموعات المربوطة (all_chats)
+            # إذا توقف النشاط في الجميع (بسبب إجابة سريعة)، نكسر الانتظار
+            if all(not active_quizzes.get(cid, {}).get('active', False) for cid in all_chats): 
                 break
             await asyncio.sleep(0.4)
 
