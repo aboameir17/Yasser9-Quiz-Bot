@@ -2194,102 +2194,93 @@ async def sync_points_to_db(group_scores, is_pub):
 
         except Exception as e:
             logging.error(f"❌ خطأ ترحيل نقاط المجموعة {cid}: {e}")
-# =======================================
+# ==========================================
 # 4. نظام رصد الإجابات الذكي (ياسر المطور)
 # ==========================================
 def is_answer_correct(user_msg, correct_ans):
     if not user_msg or not correct_ans: return False
 
     def clean_logic(text):
-        # 1. تنظيف أساسي (حذف المسافات وتحويل لصغير)
-        text = text.strip().lower()
-        # 2. توحيد الألفات (أإآ -> ا)
+        text = str(text).strip().lower()
+        # توحيد الحروف العربية (ا، ه، ي)
         text = re.sub(r'[أإآ]', 'ا', text)
-        # 3. توحيد التاء المربوطة (ة -> ه)
         text = re.sub(r'ة', 'ه', text)
-        # 4. توحيد الياء (ى -> ي)
         text = re.sub(r'ى', 'ي', text)
-        # 5. معالجة الواو الزائدة (مثل عمرو -> عمر)
-        if text.endswith('و') and len(text) > 3:
-            text = text[:-1]
-        # 6. حذف المسافات الزائدة بين الكلمات
-        text = ' '.join(text.split())
-        return text
+        return ' '.join(text.split())
 
-    user_clean = clean_logic(user_msg)
-    correct_clean = clean_logic(correct_ans)
+    u_clean = clean_logic(user_msg)
+    c_clean = clean_logic(correct_ans)
 
-    # 1. فحص التطابق التام
-    if user_clean == correct_clean:
-        return True
-
-    # 2. فحص الاحتواء (كلمة من إجابة طويلة)
-    if len(user_clean) > 3 and (user_clean in correct_clean or correct_clean in user_clean):
-        return True
-
-    # 3. فحص نسبة التشابه (تجاوز الأخطاء الإملائية 80%)
-    similarity = difflib.SequenceMatcher(None, user_clean, correct_clean).ratio()
-    if similarity >= 0.80:
-        return True
-
+    # 1. تطابق تام
+    if u_clean == c_clean: return True
+    # 2. نسبة تشابه 85% (للأخطاء الإملائية)
+    if difflib.SequenceMatcher(None, u_clean, c_clean).ratio() >= 0.85: return True
+    # 3. الكلمات الطويلة (احتواء)
+    if len(u_clean) >= 4 and (u_clean in c_clean or c_clean in u_clean): return True
+    
     return False
-
-# ==========================================
-# 🎯 رادار الإجابات الموحد (يمنع التكرار نهائياً)
-# ==========================================
 @dp.message_handler(lambda m: not m.text.startswith('/'))
-async def unified_answer_checker(m: types.Message):
+async def check_ans(m: types.Message):
+    """
+    رادار ياسر المطور (الرصد الهجين: خاص + عام) 📡
+    """
     cid = m.chat.id
     uid = m.from_user.id
-    user_text = m.text.strip()
-
-    # 1️⃣ أولاً: التحقق من "الإذاعة العالمية" (الأولوية القصوى)
-    quiz_g = global_active_quizzes.get(cid)
-    if quiz_g and quiz_g.get('active'):
-        correct_ans = str(quiz_g['ans']).strip()
+    
+    # 1️⃣ التأكد أن هذه المجموعة في حالة مسابقة نشطة
+    quiz = active_quizzes.get(cid)
+    if not quiz or not quiz.get('active'):
+        return
         
-        if is_answer_correct(user_text, correct_ans):
-            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-            if not any(w['id'] == uid for w in quiz_g['winners']):
-                elapsed = round(time.time() - quiz_g['start_time'], 2)
-                
-                # تسجيل الفوز في الإذاعة
-                quiz_g['winners'].append({
-                    "name": m.from_user.first_name, 
-                    "id": uid,
-                    "time": elapsed
-                })
-                
-                # إذا كان وضع السرعة، نغلق السؤال عالمياً فوراً
-                if quiz_g.get('mode') == 'السرعة ⚡':
-                    participants = quiz_g.get('participants', [cid])
-                    for p_cid in participants:
-                        if p_cid in global_active_quizzes:
-                            global_active_quizzes[p_cid]['active'] = False
-                    
-                    await m.reply(f"🚀 <b>إجابة عالمية!</b>\nأنت الأسرع في الإذاعة خلال {elapsed} ثانية!", parse_mode="HTML")
-                else:
-                    await m.reply(f"✅ <b>إجابة صحيحة في التحدي العالمي!</b>", parse_mode="HTML")
-                
-                return # ✋ توقف هنا! لا تذهب للفحص الخاص (هذا ما يمنع التكرار)
-
-    # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة" (إذا لم يكن هناك إذاعة)
-    elif cid in active_quizzes and active_quizzes[cid]['active']:
-        quiz_p = active_quizzes[cid]
-        correct_ans = str(quiz_p['ans']).strip()
+    user_raw = m.text.strip()
+    correct_raw = quiz['ans']
+    
+    # 2️⃣ ميزان العدل (فحص الإجابة الذكي)
+    if is_answer_correct(user_raw, correct_raw):
         
-        if is_answer_correct(user_text, correct_ans):
-            if not any(w['id'] == uid for w in quiz_p['winners']):
-                quiz_p['winners'].append({
-                    "name": m.from_user.first_name, 
-                    "id": uid
-                })
+        # 3️⃣ التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
+        if not any(w['id'] == uid for w in quiz['winners']):
+            
+            # تسجيل الفائز في ذاكرة السؤال الحالية
+            quiz['winners'].append({
+                "name": m.from_user.first_name, 
+                "id": uid,
+                "time": round(time.time() - quiz['start_time'], 2)
+            })
+            
+            # 🔥 [ منطق الإغلاق العالمي: خاص وعام ] 🔥
+            if quiz.get('mode') == 'السرعة ⚡':
+                # نجلب "شركاء الإذاعة" (لو خاصة بيكون قروبه بس، لو عامة بتكون كل القائمة)
+                participants = quiz.get('participants', [cid])
                 
-                if quiz_p.get('mode') == 'السرعة ⚡':
-                    quiz_p['active'] = False
+                for other_cid in participants:
+                    if other_cid in active_quizzes:
+                        # إغلاق السؤال فوراً في كل المجموعات المتصلة
+                        active_quizzes[other_cid]['active'] = False
+                        
+                        # تنبيه بسيط للقروبات الأخرى في حالة الإذاعة العامة
+                        if len(participants) > 1 and other_cid != cid:
+                            try:
+                                await bot.send_message(other_cid, f"🏁 <b>انتهى التحدي!</b>\nالبطل <b>{m.from_user.first_name}</b> خطف الإجابة من مجموعة أخرى! 🚀", parse_mode="HTML")
+                            except: pass
                 
-                # هنا لا تضع m.reply إذا كان المحرك هو من يرسل القالب لاحقاً
-                return
+                # رد تأكيدي للفائز في مجموعته
+                await m.reply(f"🚀 <b>كفو يا وحش!</b>\nأسرع إجابة في {round(time.time() - quiz['start_time'], 2)} ثانية!", parse_mode="HTML")
+            else:
+                # إذا كان النمط "نقاط" (مو سرعة)، نرد عليه ونخليه يستمر
+                await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>", parse_mode="HTML")
+
+    else:
+        # 4️⃣ تسجيل المخطئين (اختياري للنتائج)
+        if 'wrong_answers' not in quiz:
+            quiz['wrong_answers'] = []
+        
+        u_name = m.from_user.first_name
+        if u_name not in quiz['wrong_answers']:
+            # نتأكد أنه لم يسبق له الفوز قبل تسجيله كمخطئ
+            if not any(w['id'] == uid for w in quiz['winners']):
+                quiz['wrong_answers'].append(u_name)
+
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
