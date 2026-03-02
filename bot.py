@@ -557,7 +557,7 @@ async def launch_global_countdown(quiz_id, q_data):
             if isinstance(msg, types.Message):
                 group_messages[msg.chat.id] = msg.message_id
 
-        # 3. دورة التعديل المتزامنة
+         # 3. دورة التعديل المتزامنة
         for icon in timer_icons:
             text = f"⏳ **المسابقة تبدأ خلال:** {icon}" if icon != "🚀" else "🔥 **انطـــلاق!**"
             edit_tasks = [
@@ -580,7 +580,7 @@ async def launch_global_countdown(quiz_id, q_data):
 
     except Exception as e:
         logging.error(f"Countdown Launch Error: {e}")
-        
+         
 # 4. حالات النظام (FSM States)
 # ==========================================
 class Form(StatesGroup):
@@ -2024,159 +2024,8 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
 # ==========================================
 # 🛰️ 3. المحرك الموحد للإذاعة (النسخة الصافية - رادارات عالمية)
 # ==========================================
-async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
-    try:
-        # 1️⃣ جلب المجموعات ودمجها
-        try:
-            res = (
-                supabase.table("groups_hub")
-                .select("group_id")
-                .eq("status", "active")
-                .eq("is_global", True)
-                .execute()
-            )
-            db_ids = [row['group_id'] for row in res.data]
-            base_ids = chat_ids if isinstance(chat_ids, list) else [chat_ids]
-            all_chats = list(set(base_ids + db_ids))
-        except Exception as e:
-            logging.error(f"⚠️ DB Error: {e}")
-            all_chats = list(set(chat_ids if isinstance(chat_ids, list) else [chat_ids]))
 
-        if not all_chats:
-            return
-
-        # 2️⃣ تجهيز الأسئلة
-        selected_questions = questions_pool[:int(quiz_data.get('questions_count', 10))]
-        group_scores = {cid: {} for cid in all_chats}
-        total_q = len(selected_questions)
-        is_pub = quiz_data.get("is_public", False)
-
-        # 3️⃣ دورة الأسئلة
-        for i, q in enumerate(selected_questions):
-
-            ans = str(
-                q.get('correct_answer')
-                or q.get('answer_text')
-                or q.get('answer')
-                or ""
-            ).strip()
-
-            cat_name = q.get('category') or "عام"
-
-            # 🔥 تفعيل الرادار العالمي
-            for cid in all_chats:
-                global_active_quizzes[cid] = {
-                    "active": True,
-                    "ans": ans,
-                    "winners": [],
-                    "wrong_answers": [],
-                    "participants": all_chats,
-                    "mode": quiz_data.get('mode', 'السرعة ⚡'),
-                    "start_time": time.time()
-                }
-
-            # 4️⃣ بث السؤال
-            send_tasks = [
-                send_quiz_question(
-                    cid,
-                    q,
-                    i + 1,
-                    total_q,
-                    {
-                        'owner_name': owner_name,
-                        'mode': quiz_data.get('mode', 'السرعة ⚡'),
-                        'time_limit': quiz_data.get('time_limit', 15),
-                        'cat_name': cat_name,
-                        'source': "إذاعة البوت 🌍"
-                    }
-                )
-                for cid in all_chats
-            ]
-
-            await asyncio.gather(*send_tasks, return_exceptions=True)
-
-            # 5️⃣ الانتظار حسب الوقت أو توقف الرادار
-            t_limit = int(quiz_data.get('time_limit', 15))
-            start_wait = time.time()
-
-            while time.time() - start_wait < t_limit:
-                if all(
-                    not global_active_quizzes.get(cid, {}).get('active', False)
-                    for cid in all_chats
-                ):
-                    break
-                await asyncio.sleep(0.4)
-
-            # 6️⃣ إعلان النتائج اللحظية
-            res_tasks = []
-
-            for cid in all_chats:
-                winners = global_active_quizzes.get(cid, {}).get('winners', [])
-                wrongs = global_active_quizzes.get(cid, {}).get('wrong_answers', [])
-
-                # تحديث النقاط
-                for w in winners:
-                    uid = w['id']
-                    if uid not in group_scores[cid]:
-                        group_scores[cid][uid] = {
-                            "name": w['name'],
-                            "points": 0
-                        }
-                    group_scores[cid][uid]['points'] += 10
-
-                res_tasks.append(
-                    send_creative_results(
-                        cid,
-                        ans,
-                        winners,
-                        group_scores[cid],
-                        wrongs,
-                        is_pub
-                    )
-                )
-
-            await asyncio.gather(*res_tasks, return_exceptions=True)
-
-            # 7️⃣ العداد التنازلي قبل السؤال التالي
-            if i < total_q - 1:
-                count_tasks = [run_countdown(cid) for cid in all_chats]
-                await asyncio.gather(*count_tasks, return_exceptions=True)
-            else:
-                await asyncio.sleep(2)
-
-        # 8️⃣ إعلان النتائج النهائية
-        final_tasks = []
-
-        for cid in all_chats:
-            scores = group_scores.get(cid, {})
-
-            if scores:
-                final_tasks.append(
-                    send_final_results(
-                        cid,
-                        scores,
-                        total_q,
-                        is_pub
-                    )
-                )
-            else:
-                final_tasks.append(
-                    bot.send_message(
-                        cid,
-                        "🏁 انتهت المسابقة العالمية! حظاً أوفر المرة القادمة."
-                    )
-                )
-
-        await asyncio.gather(*final_tasks, return_exceptions=True)
-
-        # 🧹 تنظيف الرسائل
-        for cid in all_chats:
-            mids = messages_to_delete.get(cid, [])
-            for mid in mids:
-                try:
-                    await bot.delete_message(cid, mid)
-                except:
-                    pass
+                        
 
     except Exception as e:
         logging.error(f"🚨 Global Broadcast Error: {e}")
