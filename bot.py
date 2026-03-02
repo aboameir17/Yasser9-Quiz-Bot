@@ -2214,85 +2214,61 @@ def is_answer_correct(user_msg, correct_ans):
     return False
 
 # ---- رصد الإجابات (Check Answers) ----
+# ---- رادار الإجابات الموحد (الخاص والعالمي) ----
 @dp.message_handler(lambda m: not m.text.startswith('/'))
-async def check_ans(m: types.Message):
-    cid = m.chat.id
-    # التأكد أن هناك مسابقة قائمة في هذه المجموعة
-    if cid in active_quizzes and active_quizzes[cid]['active']:
-        
-        user_raw = m.text
-        correct_raw = active_quizzes[cid]['ans']
-        
-        # استخدام المنطق الذكي للتحقق
-        if is_answer_correct(user_raw, correct_raw):
-            
-            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-            if not any(w['id'] == m.from_user.id for w in active_quizzes[cid]['winners']):
-                
-                active_quizzes[cid]['winners'].append({
-                    "name": m.from_user.first_name, 
-                    "id": m.from_user.id
-                })
-                
-                # إذا كان وضع المسابقة هو "السرعة"، نغلق السؤال فوراً
-                if active_quizzes[cid]['mode'] == 'السرعة ⚡':
-                    active_quizzes[cid]['active'] = False
-
-# ==========================================
-# 4. نظام رصد الإجابات العالمي (رادار ياسر المطور) 📡
-# ==========================================
-@dp.message_handler(lambda m: not m.text.startswith('/'))
-async def check_ans_global(m: types.Message):
+async def unified_answer_checker(m: types.Message):
     cid = m.chat.id
     uid = m.from_user.id
-    
-    # التأكد أن المجموعة جزء من إذاعة نشطة (global_active_quizzes)
-    quiz = global_active_quizzes.get(cid)
-    if not quiz or not quiz.get('active'):
-        return
-        
-    # التحقق: هل هذه فعلاً إذاعة (أكثر من مجموعة)؟
-    participants = quiz.get('participants', [])
-    if len(participants) <= 1:
-        return # نترك المهمة للمحرك الخاص أعلاه
+    user_text = m.text.strip()
 
-    user_raw = m.text.strip()
-    correct_raw = quiz['ans']
-    
-    # ⚖️ ميزان العدل
-    if is_answer_correct(user_raw, correct_raw):
-        if not any(w['id'] == uid for w in quiz['winners']):
-            elapsed = round(time.time() - quiz['start_time'], 2)
-            
-            # تسجيل الفوز العالمي
-            quiz['winners'].append({
-                "name": m.from_user.first_name, 
-                "id": uid,
-                "time": elapsed
-            })
-            
-            # 🏁 منطق الإغلاق العالمي (السرعة ⚡)
-            if quiz.get('mode') == 'السرعة ⚡':
-                for other_cid in participants:
-                    if other_cid in global_active_quizzes:
-                        global_active_quizzes[other_cid]['active'] = False
-                        
-                        # تنبيه المجموعات الأخرى
-                        if other_cid != cid:
-                            try:
-                                await bot.send_message(other_cid, f"🏁 <b>خُطفت الإجابة!</b>\nالبطل <b>{m.from_user.first_name}</b> أجاب أولاً من مجموعة أخرى! 🚀", parse_mode="HTML")
-                            except: pass
+    # 1️⃣ أولاً: التحقق من المسابقة العالمية (الإذاعة)
+    # نتحقق من وجود الجروب في رادار الإذاعة وأن السؤال نشط
+    global_quiz = global_active_quizzes.get(cid)
+    if global_quiz and global_quiz.get('active'):
+        # منطق التحقق العالمي
+        correct_ans = str(global_quiz['ans']).strip()
+        if is_answer_correct(user_text, correct_ans):
+            # التأكد أن المستخدم لم يفز مسبقاً
+            if not any(w['id'] == uid for w in global_quiz['winners']):
+                elapsed = round(time.time() - global_quiz['start_time'], 2)
                 
-                await m.reply(f"🚀 <b>إجابة عالمية!</b>\nأنت الأسرع في الإذاعة خلال {elapsed} ثانية!", parse_mode="HTML")
-            else:
-                await m.reply(f"✅ <b>إجابة صحيحة في التحدي العالمي!</b>", parse_mode="HTML")
+                # تسجيل الفوز في الإذاعة
+                global_quiz['winners'].append({
+                    "name": m.from_user.first_name, 
+                    "id": uid,
+                    "time": elapsed
+                })
+                
+                # إذا كان الوضع "سرعة"، نغلق السؤال في كل المجموعات المشاركة
+                if global_quiz.get('mode') == 'السرعة ⚡':
+                    participants = global_quiz.get('participants', [cid])
+                    for p_cid in participants:
+                        if p_cid in global_active_quizzes:
+                            global_active_quizzes[p_cid]['active'] = False
+                    
+                    await m.reply(f"🚀 <b>إجابة عالمية!</b>\nأنت الأسرع في الإذاعة خلال {elapsed} ثانية!", parse_mode="HTML")
+                else:
+                    await m.reply(f"✅ <b>إجابة صحيحة في التحدي العالمي!</b>", parse_mode="HTML")
+                return # نخرج هنا لكي لا يعالجه الرادار الخاص (يمنع التكرار)
 
-    else:
-        # تسجيل المخطئين في الإذاعة
-        if 'wrong_answers' not in quiz: quiz['wrong_answers'] = []
-        u_name = m.from_user.first_name
-        if u_name not in quiz['wrong_answers'] and not any(w['id'] == uid for w in quiz['winners']):
-            quiz['wrong_answers'].append(u_name)
+    # 2️⃣ ثانياً: التحقق من المسابقة الخاصة (إذا لم تكن عالمية)
+    elif cid in active_quizzes and active_quizzes[cid]['active']:
+        private_quiz = active_quizzes[cid]
+        correct_ans = str(private_quiz['ans']).strip()
+        
+        if is_answer_correct(user_text, correct_ans):
+            if not any(w['id'] == uid for w in private_quiz['winners']):
+                private_quiz['winners'].append({
+                    "name": m.from_user.first_name, 
+                    "id": uid
+                })
+                
+                if private_quiz.get('mode') == 'السرعة ⚡':
+                    private_quiz['active'] = False
+                
+                # هنا لا ترسل رسالة "إجابة صحيحة" يدوية إذا كان المحرك 
+                # هو من يرسل قالب النتائج لاحقاً، لتجنب التكرار.
+                # فقط نحدث البيانات والمحرك سيتكفل بالباقي في دورته.
             
 # ==========================================
 # ==========================================
