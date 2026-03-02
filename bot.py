@@ -570,12 +570,12 @@ async def launch_global_countdown(quiz_id, q_data):
             await asyncio.sleep(1.1)
 
         # 4. 🚀 تشغيل المحرك الموحد (النسخة الصافية)
-        # سيقوم المحرك الآن ببث الأسئلة لـ groups_list المحددة فقط
-        asyncio.create_task(engine_global_broadcast(
-            chat_ids=groups_list, 
+        # نرسل القائمة "مرة واحدة" فقط ونستخدم await وليس create_task هنا لمنع الانفلات
+        await engine_global_broadcast(
+            chat_ids=list(set(groups_list)), # استخدام set يقتل التكرار نهائياً
             quiz_data=q_data, 
-            owner_name="إذاعة عالمية 🌐"
-        ))
+            owner_name="الإذاعة العالمية 🌐"
+        )
 
         # 5. تنظيف جدول المشاركين للجولة القادمة
         supabase.table("quiz_participants").delete().eq("quiz_id", quiz_id).execute()
