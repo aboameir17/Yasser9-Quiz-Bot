@@ -2070,18 +2070,29 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                 }
 
             # 4️⃣ بث السؤال (تصحيح النطاق إلى إذاعة عالمية 🌐)
-            send_tasks = [send_quiz_question(cid, q, i+1, total_q, {
-                'owner_name': owner_name, 
-                'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-                'time_limit': quiz_data.get('time_limit', 15), 
-                'cat_name': cat_name,
-                'source': "إذاعة عالمية 🌐" # يحل مشكلة ظهور "خاصة"
-            }) for cid in all_chats]
-            
-            q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
-            for idx, m in enumerate(q_msgs):
-                if isinstance(m, types.Message): 
-                    messages_to_delete[all_chats[idx]].append(m.message_id)
+send_tasks = [
+    send_quiz_question(
+        cid, 
+        q, 
+        i+1, 
+        total_q, 
+        {
+            'owner_name': owner_name, 
+            'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+            'time_limit': quiz_data.get('time_limit', 15), 
+            'cat_name': cat_name,
+            'source': "إذاعة عالمية 🌐",
+            'is_public': True   # ✅ هذا هو السطر المهم
+        }
+    ) 
+    for cid in all_chats
+]
+
+q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
+
+for idx, m in enumerate(q_msgs):
+    if isinstance(m, types.Message): 
+        messages_to_delete[all_chats[idx]].append(m.message_id)
 
             # 5️⃣ انتظار الإجابة
             t_limit = int(quiz_data.get('time_limit', 15))
