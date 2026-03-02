@@ -131,27 +131,32 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
 async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
-    """تصميم ياسر المطور: دمج الفائزين والترتيب في رسالة واحدة"""
-    msg =  "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n"
+    """نسخة ياسر المصفاة - إرسال واحد فقط"""
+    msg = "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n"
     msg += f"✅ الإجابة الصحيحة: <b>{correct_ans}</b>\n"
     msg += "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅❃\n\n"
     
     if winners:
-        msg += "❃─── { جواب صح} ───❃\n"
+        msg += "❃─── { جواب صح } ───❃\n"
         for i, w in enumerate(winners, 1):
             msg += f"{i}- {w['name']} (+10)\n"
     else:
         msg += "❌ لم ينجح أحد في الإجابة على هذا السؤال\n"
     
+    # الترتيب
     leaderboard = sorted(overall_scores.values(), key=lambda x: x['points'], reverse=True)
-    msg += "\n❃─── { الترتيب} ───❃\n"
+    msg += "\n❃─── { الترتيب } ───❃\n"
     medals = ["🥇", "🥈", "🥉"]
     for i, player in enumerate(leaderboard[:3]):
         medal = medals[i] if i < 3 else "👤"
         msg += f"{medal} {player['name']} — {player['points']}\n"
     
-    # ✅ التصحيح: سطر واحد فقط للإرسال والـ return معاً
-    return await bot.send_message(chat_id, msg, parse_mode="HTML")
+    # 🔥 التصحيح: سطر واحد فقط للإرسال والعودة
+    try:
+        return await bot.send_message(chat_id, msg, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Error sending results to {chat_id}: {e}")
+        
 async def send_final_results(chat_id, scores, total_q, is_public=False):
     """
     إصلاح ياسر المطور: عرض العباقرة في كل الحالات مع معالجة الأخطاء
