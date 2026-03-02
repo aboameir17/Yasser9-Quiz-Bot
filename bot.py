@@ -51,7 +51,6 @@ active_quizzes = {}
 
 global_active_quizzes = {}
 
-active_broadcasts = set()
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
@@ -2023,6 +2022,11 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
     # 7. إعلان لوحة الشرف النهائية
     await send_final_results(chat_id, overall_scores, len(questions))
 # ==========================================
+
+# 1️⃣ صمام الأمان العالمي (خارج الدالة لمنع الطلقة المزدوجة)
+active_broadcasts = set()
+
+# 2️⃣ دالة العداد التنازلي المصححة لتجنب أي NameError
 async def run_countdown(chat_id):
     try:
         msg = await bot.send_message(chat_id, "⏳ استعدوا.. السؤال القادم بعد: 3")
@@ -2037,40 +2041,46 @@ async def run_countdown(chat_id):
 
 # 3️⃣ المحرك الرئيسي الموحد
 async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
-    # --- [ أ ] تصفية المجموعات الذكية (منع التكرار القاتل) ---
-    # إذا كان chat_ids يحتوي على مجموعات (مشاركين)، نستخدمهم فقط
-    # إذا كان فارغاً، نجلب الهب. هذا يمنع "دبلجة" المجموعات
-    input_ids = chat_ids if isinstance(chat_ids, list) else ([chat_ids] if chat_ids else [])
-    
-    try:
-        if not input_ids: # إذا لم يرسل المشاركين، نجلب الهب
-            res = supabase.table("groups_hub").select("group_id").eq("status", "active").eq("is_global", True).execute()
-            all_chats = list(set([row['group_id'] for row in res.data]))
-        else:
-            # إذا أرسلت قائمة المشاركين، نكتفي بها تماماً لمنع التكرار
-            all_chats = list(set(input_ids))
-    except Exception as e:
-        logging.error(f"⚠️ خطأ DB في المحرك: {e}")
-        all_chats = list(set(input_ids))
+    # --- [ أ ] تصفية المجموعات ومنع التكرار الجذري ---
+    input_ids = chat_ids if isinstance(chat_ids, list) else [chat_ids]
+    # 🔥 الحل القاطع: نعتمد فقط على القائمة القادمة من "المشاركين" لمنع دبلجة الإرسال
+    all_chats = list(set(input_ids))
 
     if not all_chats: return
 
     # --- [ ب ] منع الطلقة المزدوجة (القفل العالمي) ---
     for cid in all_chats:
         if cid in active_broadcasts:
-            logging.warning(f"⚠️ هناك مسابقة نشطة بالفعل في الجروب {cid}")
-            return # الخروج يمنع تشغيل "تايمرين" أو "سؤالين"
+            logging.warning(f"⚠️ مسابقة نشطة بالفعل في {cid}")
+            return
     for cid in all_chats: active_broadcasts.add(cid)
 
     try:
-        # --- [ ج ] جلب الأسئلة وتجهيزها ---
+        # --- [ ج ] جلب وتجهيز الأسئلة (إصلاح خطأ selected_questions) ---
         raw_cats = quiz_data.get('cats', [])
-        # ... (منطق معالجة الأقسام كما هو عندك) ...
-        # [تأكد أن متغير selected_questions يتم تعريفه هنا بشكل صحيح]
+        if isinstance(raw_cats, str):
+            try: cat_ids_list = json.loads(raw_cats)
+            except: cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+        else: cat_ids_list = raw_cats
+        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
+
+        is_bot = quiz_data.get("is_bot_quiz", False)
+        table = "bot_questions" if is_bot else "questions"
+        cat_col = "bot_category_id" if is_bot else "category_id"
         
-        # تنفيذ الاستعلام (تأكد من وجود هذا السطر في كودك)
-        # res_q = supabase.table(table).select(...).in_(...).execute()
-        # selected_questions = res_q.data[:count]
+        # 🛰️ جلب البيانات من سوبابيس
+        res_q = supabase.table(table).select("*, categories(name)" if not is_bot else "*").in_(cat_col, cat_ids).execute()
+        
+        if not res_q.data:
+            logging.error(f"⚠️ لم يتم العثور على أسئلة في الأقسام المختارة")
+            return
+
+        pool = res_q.data
+        random.shuffle(pool)
+        count = int(quiz_data.get('questions_count', 10))
+        
+        # ✅ التعريف الصحيح للمتغير لحل مشكلة الـ NameError
+        selected_questions = pool[:count] 
 
         total_q = len(selected_questions)
         group_scores = {cid: {} for cid in all_chats}
@@ -2087,22 +2097,20 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     "mode": quiz_data.get('mode', 'السرعة ⚡'), "start_time": time.time()
                 }
 
-            # 4️⃣ بث السؤال (حل مشكلة النطاق والظهور) ✅
-            send_tasks = []
-            for cid in all_chats:
-                # نرسل owner_name و نضع مفتاح source لضمان ظهور "إذاعة عالمية 🌐"
-                task = send_quiz_question(cid, q, i+1, total_q, {
-                    'owner_name': owner_name, 
-                    'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-                    'time_limit': quiz_data.get('time_limit', 15), 
-                    'cat_name': cat_name,
-                    'source': "إذاعة عالمية 🌐" # هذا السطر هو الذي يغير كلمة "خاصة" في القالب
-                })
-                send_tasks.append(task)
+            # 4️⃣ بث السؤال (تصحيح النطاق إلى إذاعة عالمية 🌐)
+            send_tasks = [send_quiz_question(cid, q, i+1, total_q, {
+                'owner_name': owner_name, 
+                'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+                'time_limit': quiz_data.get('time_limit', 15), 
+                'cat_name': cat_name,
+                'source': "إذاعة عالمية 🌐" # يحل مشكلة ظهور "خاصة"
+            }) for cid in all_chats]
             
             q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
-            
-            # ... بقية منطق الانتظار والنتائج (استخدم النسخة الصافية السابقة) ...
+            for idx, m in enumerate(q_msgs):
+                if isinstance(m, types.Message): 
+                    messages_to_delete[all_chats[idx]].append(m.message_id)
+
             # 5️⃣ انتظار الإجابة
             t_limit = int(quiz_data.get('time_limit', 15))
             start_wait = time.time()
@@ -2110,7 +2118,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                 if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats): break
                 await asyncio.sleep(0.4)
 
-            # 6️⃣ إرسال النتائج اللحظية (4 وسائط فقط) ✅
+            # 6️⃣ إغلاق النشاط والنتائج اللحظية (4 وسائط فقط) ✅
             res_tasks = []
             for cid in all_chats:
                 if cid in global_active_quizzes: global_active_quizzes[cid]['active'] = False
@@ -2125,7 +2133,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             
             await asyncio.gather(*res_tasks, return_exceptions=True)
 
-            # 7️⃣ العداد التنازلي بين الأسئلة
+            # 7️⃣ العداد التنازلي بين الأسئلة (يمنع الانهيار المزدوج)
             if i < total_q - 1:
                 try:
                     count_tasks = [run_countdown(cid) for cid in all_chats]
@@ -2145,7 +2153,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
     except Exception as e:
         logging.error(f"🚨 Global Engine Fatal Error: {e}")
     finally:
-        # 🔓 فتح القفل (تحرير المجموعات لبدء مسابقة جديدة)
+        # 🔓 فتح القفل للسماح ببدء إذاعة جديدة لاحقاً
         for cid in all_chats: active_broadcasts.discard(cid)
             
 # ======================================================
