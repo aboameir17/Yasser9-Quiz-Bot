@@ -2022,7 +2022,7 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
     await send_final_results(chat_id, overall_scores, len(questions))
 
 # ==========================================
-# 🛰️ 3. المحرك الموحد للإذاعة (نسخة راندر الصافية)
+# 🛰️ 3. المحرك الموحد للإذاعة (نسخة راندر المحدثة - جلب الأسئلة)
 # ==========================================
 async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
     try:
@@ -2037,15 +2037,46 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
 
         if not all_chats: return
 
-        # 2️⃣ [الخطوة 2] تجهيز الأسئلة والنتائج
-        # تأكد أن selected_questions معرفة أو اسحبها هنا
-        selected_questions = questions_pool[:int(quiz_data.get('questions_count', 10))]
-        group_scores = {cid: {} for cid in all_chats}
-        total_q = len(selected_questions)
-        messages_to_delete = {cid: [] for cid in all_chats}
-        is_pub = quiz_data.get("is_public", False)
+        # 2️⃣ [الخطوة 2] جلب وتجهيز الأسئلة (إصلاح الخطأ 🛠️)
+        try:
+            # أ- معالجة الأقسام (Cats) بنفس منطق "ياسر المطور"
+            raw_cats = quiz_data.get('cats', [])
+            if isinstance(raw_cats, str):
+                try: cat_ids_list = json.loads(raw_cats)
+                except: cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+            else: cat_ids_list = raw_cats
+            cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
 
-        # 3️⃣ دورة البث الموحدة
+            # ب- تحديد الجدول وجلب الأسئلة عشوائياً
+            is_bot = quiz_data.get("is_bot_quiz", False)
+            table = "bot_questions" if is_bot else "questions"
+            cat_col = "bot_category_id" if is_bot else "category_id"
+            
+            # تنفيذ الاستعلام لجلب خزان الأسئلة
+            res_q = supabase.table(table).select("*, categories(name)" if not is_bot else "*")\
+                .in_(cat_col, cat_ids).execute()
+
+            if not res_q.data:
+                logging.error(f"⚠️ لم أجد أسئلة في {table} للأقسام {cat_ids}")
+                return
+
+            # ج- الخلط والاختيار
+            pool = res_q.data
+            random.shuffle(pool)
+            count = int(quiz_data.get('questions_count', 10))
+            selected_questions = pool[:count]
+
+            # د- تجهيز متغيرات التحكم
+            total_q = len(selected_questions)
+            group_scores = {cid: {} for cid in all_chats}
+            messages_to_delete = {cid: [] for cid in all_chats}
+            is_pub = quiz_data.get("is_public", False)
+
+        except Exception as prep_err:
+            logging.error(f"❌ خطأ في تحضير الأسئلة: {prep_err}")
+            return
+
+       # 3️⃣ دورة البث الموحدة
         for i, q in enumerate(selected_questions):
             ans = str(q.get('correct_answer') or q.get('answer_text') or q.get('answer') or "").strip()
             cat_name = q.get('category') or "عام"
