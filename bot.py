@@ -494,7 +494,7 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
 
         # 4. إرسال الرسالة الأولى وتخزين المعرفات
         group_msgs = {}
-        kb = InlineKeyboardMarkup().add(InlineKeyboardButton("🚫 إلغاء المسابقة في مجموعتنا", callback_data=f"cancel_quiz_{quiz_id}"))
+        kb = InlineKeyboardMarkup().add(InlineKeyboardButton("🚫 إرفض تشغيل في هذا القرةب", callback_data=f"cancel_quiz_{quiz_id}"))
 
         for cid in all_chats:
             try:
@@ -513,14 +513,14 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
             text = (
                 f"📢 **إعلان: مسابقة عالمية منطلقة الآن!** 🌐\n"
                 f"━━━━━━━━━━━━━━\n"
+                f"⏳ ستبدأ المسابقة بعد انتهاء العد التنازلي:\n"
+                f"🔥 {emoji} 🔥\n"
+                f"━━━━━━━━━━━━━━\n"
                 f"🏆 المسابقة: **{quiz_name}**\n"
                 f"📂 القسم: **{cat_info}**\n"
                 f"🔢 عدد الأسئلة: **{q_count}**\n"
                 f"⚙️ النوع: **{q_mode}**\n"
                 f"👤 المنظم: **{c.from_user.first_name}**\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"⏳ ستبدأ المسابقة بعد انتهاء العد التنازلي:\n"
-                f"🔥 {emoji} 🔥\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"👈 إن كنت لا تريد المشاركة اضغط إلغاء أدناه."
             )
@@ -555,6 +555,7 @@ class Form(StatesGroup):
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
     waiting_for_quiz_name = State()
+
 
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
