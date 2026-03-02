@@ -1812,6 +1812,7 @@ async def engine_user_questions(chat_id, quiz_data, owner_name):
         logging.error(f"User Engine Error: {e}")
 
 
+
 # --- [ محرك التلميحات الملكي المطور: 3 قلوب + ذاكرة سحابية ✨ ] ---
 
 current_key_index = 0 # متغير تدوير المفاتيح
@@ -1901,100 +1902,69 @@ async def delete_after(message, delay):
         pass
 
 # ==========================================
-# [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
+# 3. نظام المحركات المنفصلة (ياسر المطور - نسخة عشوائية)
 # ==========================================
-async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_type):
-    random.shuffle(questions)
-    overall_scores = {}
 
-    for i, q in enumerate(questions):
-        # 1. استخراج الإجابة والنص حسب نوع المصدر
-        if engine_type == "bot":
-            ans = str(q.get('correct_answer') or "").strip()
-            cat_name = q.get('category') or "بوت"
-        elif engine_type == "user":
-            ans = str(q.get('answer_text') or q.get('correct_answer') or "").strip()
-            cat_name = q['categories']['name'] if q.get('categories') else "عام"
-        else:
-            ans = str(q.get('correct_answer') or q.get('ans') or "").strip()
-            cat_name = "قسم خاص 🔒"
-
-        # 2. تصفير حالة السؤال وتجهيز الذاكرة النشطة
-        active_quizzes[chat_id] = {
-            "active": True, 
-            "ans": ans, 
-            "winners": [], 
-            "mode": quiz_data['mode'], 
-            "hint_sent": False
-        }
-        
-        # 3. إرسال قالب السؤال للقروب
-        await send_quiz_question(chat_id, q, i+1, len(questions), {
-            'owner_name': owner_name, 
-            'mode': quiz_data['mode'], 
-            'time_limit': quiz_data['time_limit'], 
-            'cat_name': cat_name
-        })
-        
-        # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
-        start_time = time.time()
-        t_limit = int(quiz_data.get('time_limit', 15))
-        h_msg = None 
-        
-        while time.time() - start_time < t_limit:
-            if not active_quizzes.get(chat_id) or not active_quizzes[chat_id]['active']:
-                break
-            
-            if quiz_data.get('smart_hint') and not active_quizzes[chat_id]['hint_sent']:
-                if (time.time() - start_time) >= (t_limit / 2):
-                    try:
-                        hint_text = await generate_smart_hint(ans)
-                        h_msg = await bot.send_message(chat_id, hint_text, parse_mode="HTML")
-                        active_quizzes[chat_id]['hint_sent'] = True
-                    except Exception as e:
-                        logging.error(f"⚠️ خطأ في التلميح: {e}")
-
-            await asyncio.sleep(0.5)
-
-        if h_msg:
-            asyncio.create_task(delete_after(h_msg, 0))
-
-        # 5. إنهاء السؤال وحساب النقاط
-        if chat_id in active_quizzes:
-            active_quizzes[chat_id]['active'] = False
-            for w in active_quizzes[chat_id]['winners']:
-                uid = w['id']
-                if uid not in overall_scores: 
-                    overall_scores[uid] = {"name": w['name'], "points": 0}
-                overall_scores[uid]['points'] += 10
-        
-            # 6. عرض لوحة المبدعين اللحظية
-            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
-        
-        # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
-        if i < len(questions) - 1:
-            icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
+# --- [1. محرك أسئلة البوت] ---
+async def engine_bot_questions(chat_id, quiz_data, owner_name):
+    try:
+        raw_cats = quiz_data.get('cats', [])
+        if isinstance(raw_cats, str):
             try:
-                countdown_msg = await bot.send_message(chat_id, f"⌛ استعدوا.. السؤال التالي يبدأ بعد 5 ثواني...")
-                
-                # سنقوم بالتحديث كل ثانية ونصف أو ثانيتين لتقليل الضغط
-                for count in range(4, 0, -2): # تقليل عدد التحديثات (تحديث كل ثانيتين)
-                    await asyncio.sleep(2)
-                    icon = icons[count] if count < len(icons) else "⚪"
-                    try:
-                        await countdown_msg.edit_text(f"{icon} استعدوا.. السؤال التالي يبدأ بعد <b>{count}</b> ثواني...")
-                    except Exception as e:
-                        logging.warning(f"Flood avoidance: {e}")
-                        break # توقف عن التحديث إذا ضغط التليجرام
-                
-                await asyncio.sleep(1.5)
-                await countdown_msg.delete()
-            except Exception as e:
-                logging.error(f"Countdown Error: {e}")
+                cat_ids_list = json.loads(raw_cats)
+            except:
+                cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
         else:
-            await asyncio.sleep(2)
-    # 7. إعلان لوحة الشرف النهائية
-    await send_final_results(chat_id, overall_scores, len(questions))
+            cat_ids_list = raw_cats
+
+        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
+        if not cat_ids:
+            return await bot.send_message(chat_id, "⚠️ خطأ: لم يتم العثور على أقسام صالحة.")
+
+        # جلب الأسئلة وخلطها عشوائياً
+        res = supabase.table("bot_questions").select("*").in_("bot_category_id", cat_ids).execute()
+        if not res.data:
+            return await bot.send_message(chat_id, "⚠️ لم أجد أسئلة في جدول البوت.")
+
+        questions_pool = res.data
+        random.shuffle(questions_pool)
+        count = int(quiz_data.get('questions_count', 10))
+        selected_questions = questions_pool[:count]
+
+        await run_universal_logic(chat_id, selected_questions, quiz_data, owner_name, "bot")
+    except Exception as e:
+        logging.error(f"Bot Engine Error: {e}")
+
+# --- [2. محرك أسئلة الأعضاء] ---
+async def engine_user_questions(chat_id, quiz_data, owner_name):
+    try:
+        raw_cats = quiz_data.get('cats', [])
+        if isinstance(raw_cats, str):
+            try:
+                cat_ids_list = json.loads(raw_cats)
+            except:
+                cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+        else:
+            cat_ids_list = raw_cats
+
+        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
+        if not cat_ids:
+            return await bot.send_message(chat_id, "⚠️ خطأ في أقسام الأعضاء.")
+
+        # جلب الأسئلة وخلطها عشوائياً
+        res = supabase.table("questions").select("*, categories(name)").in_("category_id", cat_ids).execute()
+        if not res.data:
+            return await bot.send_message(chat_id, "⚠️ لم أجد أسئلة في أقسام الأعضاء.")
+
+        questions_pool = res.data
+        random.shuffle(questions_pool)
+        count = int(quiz_data.get('questions_count', 10))
+        selected_questions = questions_pool[:count]
+
+        await run_universal_logic(chat_id, selected_questions, quiz_data, owner_name, "user")
+    except Exception as e:
+        logging.error(f"User Engine Error: {e}")
+
 # ==========================================
 
 # 1️⃣ صمام الأمان العالمي (خارج الدالة لمنع الطلقة المزدوجة)
@@ -2151,7 +2121,8 @@ for cid in all_chats:
 # فتح القفل للسماح بإذاعة جديدة
 for cid in all_chats:
     active_broadcasts.discard(cid)
-            
+
+    
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
 # ======================================================
