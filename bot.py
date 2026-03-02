@@ -1968,7 +1968,7 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
                 overall_scores[uid]['points'] += 10
         
             # 6. عرض لوحة المبدعين اللحظية
-            await send_cccreative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
+            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
         
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
@@ -2059,101 +2059,83 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
         group_scores = {cid: {} for cid in all_chats}
         messages_to_delete = {cid: [] for cid in all_chats}
 
-        # --- [ د ] دورة البث الموحدة ---
+        # --- [ د ] دورة البث الموحدة (تم ضبط المسافات لمنع SyntaxError) ---
         for i, q in enumerate(selected_questions):
-            ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
-            cat_name = q.get('category') or "عام"
+            try:
+                ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
+                cat_name = q.get('category') or "عام"
 
-            for cid in all_chats:
-                global_active_quizzes[cid] = {
-                    "active": True, "ans": ans, "winners": [], 
-                    "mode": quiz_data.get('mode', 'السرعة ⚡'), "start_time": time.time()
-                }
+                for cid in all_chats:
+                    global_active_quizzes[cid] = {
+                        "active": True, 
+                        "ans": ans, 
+                        "winners": [], 
+                        "mode": quiz_data.get('mode', 'السرعة ⚡'), 
+                        "start_time": time.time()
+                    }
 
-            # 4️⃣ بث السؤال (تصحيح النطاق إلى إذاعة عالمية 🌐)
-send_tasks = [
-    send_quiz_question(
-        cid, 
-        q, 
-        i+1, 
-        total_q, 
-        {
-            'owner_name': owner_name, 
-            'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-            'time_limit': quiz_data.get('time_limit', 15), 
-            'cat_name': cat_name,
-            'source': "إذاعة عالمية 🌐",
-            'is_public': True   # ✅ هذا هو السطر المهم
-        }
-    ) 
-    for cid in all_chats
-]
+                # 4️⃣ بث السؤال (داخل دورة الـ for)
+                send_tasks = [
+                    send_quiz_question(
+                        cid, q, i+1, total_q, 
+                        {
+                            'owner_name': owner_name, 
+                            'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+                            'time_limit': quiz_data.get('time_limit', 15), 
+                            'cat_name': cat_name,
+                            'source': "إذاعة عالمية 🌐",
+                            'is_public': True
+                        }
+                    ) for cid in all_chats
+                ]
 
-q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
+                q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
 
-for idx, m in enumerate(q_msgs):
-    if isinstance(m, types.Message): 
-        messages_to_delete[all_chats[idx]].append(m.message_id)
+                for idx, m in enumerate(q_msgs):
+                    if isinstance(m, types.Message): 
+                        messages_to_delete[all_chats[idx]].append(m.message_id)
 
-            # 5️⃣ انتظار الإجابة
-            t_limit = int(quiz_data.get('time_limit', 15))
-            start_wait = time.time()
-            while time.time() - start_wait < t_limit:
-                if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats): break
-                await asyncio.sleep(0.4)
+                # 5️⃣ انتظار الإجابة
+                t_limit = int(quiz_data.get('time_limit', 15))
+                start_wait = time.time()
+                while time.time() - start_wait < t_limit:
+                    # فحص إذا كان الجميع قد أجاب (في وضع السرعة)
+                    if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats):
+                        break
+                    await asyncio.sleep(0.4)
 
-            # 6️⃣ إغلاق النشاط وتحديث النقاط (المنطق المصفى) ✅
-            res_tasks = []
-            for cid in all_chats:
-                # 1. إغلاق السؤال في هذا الجروب
-                if cid in global_active_quizzes:
-                    global_active_quizzes[cid]['active'] = False
-                
-                # 2. جلب فائزين هذا الجروب فقط في هذا السؤال
-                current_winners = global_active_quizzes.get(cid, {}).get('winners', [])
-                
-                # 3. تحديث قاموس النقاط العالمي (group_scores)
-                # نحدث فقط من فازوا في هذا السؤال ولم تضف نقاطهم بعد
-                for w in current_winners:
-                    uid = w['id']
-                    if uid not in group_scores[cid]:
-                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                    
-                    # إضافة النقاط (تأكد أن الرادار لا يضيف نقاط، المحرك فقط يضيفها هنا)
-                    group_scores[cid][uid]['points'] += 10
-
-                # 4. تجهيز مهمة إرسال القالب (المحرك فقط هو من يرسل)
-                res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
-            
-            # إرسال النتائج لكل المجموعات دفعة واحدة
-            await asyncio.gather(*res_tasks, return_exceptions=True)
-
-            # 7️⃣ العداد التنازلي وتصفير الفائزين للسؤال القادم
-            if i < total_q - 1:
-                # تصفير قائمة الفائزين في الرادار استعداداً للسؤال الجديد
+                # 6️⃣ إغلاق النشاط وإرسال القالب (مرة واحدة فقط)
+                res_tasks = []
                 for cid in all_chats:
                     if cid in global_active_quizzes:
-                        global_active_quizzes[cid]['winners'] = []
+                        global_active_quizzes[cid]['active'] = False
+                    
+                    current_winners = global_active_quizzes.get(cid, {}).get('winners', [])
+                    
+                    for w in current_winners:
+                        uid = w['id']
+                        if uid not in group_scores[cid]:
+                            group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                        group_scores[cid][uid]['points'] += 10
+
+                    # هنا استدعاء القالب (سيعمل مرة واحدة لأننا أصلحنا الدالة سابقاً)
+                    res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
                 
-                count_tasks = [run_countdown(cid) for cid in all_chats]
-                await asyncio.gather(*count_tasks, return_exceptions=True)
-            else:
-                await asyncio.sleep(2)
+                await asyncio.gather(*res_tasks, return_exceptions=True)
 
-        # 8️⃣ النتائج النهائية والتنظيف
-        for cid in all_chats:
-            try: await send_final_results(cid, group_scores.get(cid, {}), total_q)
-            except: pass
-            
-            for mid in messages_to_delete.get(cid, []):
-                try: await bot.delete_message(cid, mid)
-                except: pass
+                # 7️⃣ العداد التنازلي
+                if i < total_q - 1:
+                    for cid in all_chats:
+                        if cid in global_active_quizzes:
+                            global_active_quizzes[cid]['winners'] = []
+                    
+                    count_tasks = [run_countdown(cid) for cid in all_chats]
+                    await asyncio.gather(*count_tasks, return_exceptions=True)
+                else:
+                    await asyncio.sleep(2)
 
-    except Exception as e:
-        logging.error(f"🚨 Global Engine Fatal Error: {e}")
-    finally:
-        # 🔓 فتح القفل للسماح ببدء إذاعة جديدة لاحقاً
-        for cid in all_chats: active_broadcasts.discard(cid)
+            except Exception as e:
+                logging.error(f"🚨 Error in question loop {i}: {e}")
             
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
