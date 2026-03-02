@@ -49,7 +49,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 active_quizzes = {}
 global_active_quizzes = {}
-
+active_broadcasts = set()
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
@@ -2022,24 +2022,33 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
     await send_final_results(chat_id, overall_scores, len(questions))
 
 # ==========================================
-# 🛰️ 3. المحرك الموحد للإذاعة (نسخة راندر المحدثة - جلب الأسئلة)
+# 🛰️ 3. المحرك الموحد للإذاعة (النسخة النهائية الصافية - إصلاح الشامل)
 # ==========================================
+# 🛑 صمام أمان عالمي (ضعه في أعلى الملف)
 async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
+    # 1️⃣ [الخطوة 1] تنظيف المجموعات ومنع التكرار (حل مشكلة السؤال المكرر)
+    input_ids = chat_ids if isinstance(chat_ids, list) else [chat_ids]
     try:
-        # 1️⃣ [الخطوة 1] جلب مجموعات الإذاعة ودمجها
-        try:
-            res = supabase.table("groups_hub").select("group_id").eq("status", "active").eq("is_global", True).execute()
-            db_ids = [row['group_id'] for row in res.data]
-            all_chats = list(set((chat_ids if isinstance(chat_ids, list) else [chat_ids]) + db_ids))
-        except Exception as e:
-            logging.error(f"⚠️ خطأ في قاعدة البيانات: {e}")
-            all_chats = list(set(chat_ids if isinstance(chat_ids, list) else [chat_ids]))
+        res = supabase.table("groups_hub").select("group_id").eq("status", "active").eq("is_global", True).execute()
+        db_ids = [row['group_id'] for row in res.data]
+        # دمج المجموعات بدون تكرار باستخدام set
+        all_chats = list(set(input_ids + db_ids))
+    except Exception as e:
+        logging.error(f"⚠️ خطأ DB: {e}")
+        all_chats = list(set(input_ids))
 
-        if not all_chats: return
+    if not all_chats: return
 
-        # 2️⃣ [الخطوة 2] جلب وتجهيز الأسئلة (إصلاح الخطأ 🛠️)
+    # 🛑 [حماية] منع تشغيل مسابقتين في نفس الوقت (حل مشكلة الطلقتين)
+    for cid in all_chats:
+        if cid in active_broadcasts:
+            logging.warning(f"⚠️ مسابقة نشطة بالفعل في {cid} - تم إلغاء الطلقة الثانية.")
+            return
+    for cid in all_chats: active_broadcasts.add(cid)
+
+    try:
+        # 2️⃣ [الخطوة 2] جلب وتجهيز الأسئلة
         try:
-            # أ- معالجة الأقسام (Cats) بنفس منطق "ياسر المطور"
             raw_cats = quiz_data.get('cats', [])
             if isinstance(raw_cats, str):
                 try: cat_ids_list = json.loads(raw_cats)
@@ -2047,124 +2056,101 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             else: cat_ids_list = raw_cats
             cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
 
-            # ب- تحديد الجدول وجلب الأسئلة عشوائياً
             is_bot = quiz_data.get("is_bot_quiz", False)
             table = "bot_questions" if is_bot else "questions"
             cat_col = "bot_category_id" if is_bot else "category_id"
             
-            # تنفيذ الاستعلام لجلب خزان الأسئلة
-            res_q = supabase.table(table).select("*, categories(name)" if not is_bot else "*")\
-                .in_(cat_col, cat_ids).execute()
+            res_q = supabase.table(table).select("*, categories(name)" if not is_bot else "*").in_(cat_col, cat_ids).execute()
+            if not res_q.data: return
 
-            if not res_q.data:
-                logging.error(f"⚠️ لم أجد أسئلة في {table} للأقسام {cat_ids}")
-                return
-
-            # ج- الخلط والاختيار
             pool = res_q.data
             random.shuffle(pool)
-            count = int(quiz_data.get('questions_count', 10))
-            selected_questions = pool[:count]
-
-            # د- تجهيز متغيرات التحكم
+            selected_questions = pool[:int(quiz_data.get('questions_count', 10))]
+            
             total_q = len(selected_questions)
             group_scores = {cid: {} for cid in all_chats}
             messages_to_delete = {cid: [] for cid in all_chats}
             is_pub = quiz_data.get("is_public", False)
-
         except Exception as prep_err:
-            logging.error(f"❌ خطأ في تحضير الأسئلة: {prep_err}")
+            logging.error(f"❌ خطأ تحضير: {prep_err}")
             return
 
-       # 3️⃣ دورة البث الموحدة
+        # 3️⃣ دورة البث الموحدة
         for i, q in enumerate(selected_questions):
-            ans = str(q.get('correct_answer') or q.get('answer_text') or q.get('answer') or "").strip()
+            ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
             cat_name = q.get('category') or "عام"
 
-            # 🔥 تفعيل الرادار العالمي
             for cid in all_chats:
                 global_active_quizzes[cid] = {
-                    "active": True, 
-                    "ans": ans, 
-                    "winners": [], 
-                    "wrong_answers": [],
-                    "participants": all_chats, 
-                    "mode": quiz_data.get('mode', 'السرعة ⚡'), 
-                    "start_time": time.time()
+                    "active": True, "ans": ans, "winners": [], 
+                    "mode": quiz_data.get('mode', 'السرعة ⚡'), "start_time": time.time()
                 }
 
-            # 4️⃣ بث السؤال (الطلقة الموحدة)
+            # 4️⃣ بث السؤال
             send_tasks = [send_quiz_question(cid, q, i+1, total_q, {
                 'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-                'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name
+                'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name,
+                'source': "إذاعة عالمية 🌐"
             }) for cid in all_chats]
             
             q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
-            
             for idx, m in enumerate(q_msgs):
-                if isinstance(m, types.Message):
-                    messages_to_delete[all_chats[idx]].append(m.message_id)
+                if isinstance(m, types.Message): messages_to_delete[all_chats[idx]].append(m.message_id)
 
-            # 5️⃣ انتظار الإجابة (مراقبة الرادار العالمي)
+            # 5️⃣ الانتظار
             t_limit = int(quiz_data.get('time_limit', 15))
             start_wait = time.time()
             while time.time() - start_wait < t_limit:
-                # هذا هو السطر الذي كان يحتوي على الخطأ
-                if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats):
-                    break
+                if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats): break
                 await asyncio.sleep(0.4)
 
-            # 6️⃣ إغلاق النشاط وتوزيع النتائج اللحظية
+            # 6️⃣ إغلاق النشاط والنتائج اللحظية (إصلاح خطأ الـ 4 وسائط ✅)
             for cid in all_chats:
-                if cid in global_active_quizzes:
-                    global_active_quizzes[cid]['active'] = False
+                if cid in global_active_quizzes: global_active_quizzes[cid]['active'] = False
             
             res_tasks = []
             for cid in all_chats:
                 winners = global_active_quizzes[cid].get('winners', [])
-                wrongs = global_active_quizzes[cid].get('wrong_answers', [])
-                
                 for w in winners:
                     uid = w['id']
-                    if uid not in group_scores[cid]:
-                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                    if uid not in group_scores[cid]: group_scores[cid][uid] = {"name": w['name'], "points": 0}
                     group_scores[cid][uid]['points'] += 10
                 
-                if winners:
-                    asyncio.create_task(save_points_to_supabase(cid, winners))
+                if winners: asyncio.create_task(save_points_to_supabase(cid, winners))
                 
-                res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid], wrongs, is_pub))
+                # 🔥 تم إرسال 4 وسائط فقط لتطابق دالة send_creative_results عندك
+                res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid]))
             
             await asyncio.gather(*res_tasks, return_exceptions=True)
 
-            # 7️⃣ العداد التنازلي بين الأسئلة
+            # 7️⃣ العداد التنازلي
             if i < total_q - 1:
                 count_tasks = [run_countdown(cid) for cid in all_chats]
                 await asyncio.gather(*count_tasks, return_exceptions=True)
-            else:
-                await asyncio.sleep(2)
+            else: await asyncio.sleep(2)
 
-        # 8️⃣ [إعلان النتائج النهائية]
+        # 8️⃣ النتائج النهائية
         final_tasks = []
         for cid in all_chats:
             scores = group_scores.get(cid, {})
             if scores:
-                final_tasks.append(send_final_results(cid, scores, total_q, is_pub))
+                final_tasks.append(send_final_results(cid, scores, total_q))
             else:
-                final_tasks.append(bot.send_message(cid, "🏁 انتهت المسابقة! حظاً أوفر المرة القادمة."))
-                
+                final_tasks.append(bot.send_message(cid, "🏁 انتهت المسابقة العالمية!"))
         await asyncio.gather(*final_tasks, return_exceptions=True)
 
-        # 🧹 [اللمسة الأخيرة: تنظيف الشات]
+        # 🧹 تنظيف الشات
         for cid in all_chats:
             for mid in messages_to_delete.get(cid, []):
-                try:
-                    await bot.delete_message(cid, mid)
-                except:
-                    pass
+                try: await bot.delete_message(cid, mid)
+                except: pass
 
     except Exception as e:
-        logging.error(f"Global Engine Error: {e}")
+        logging.error(f"🚨 Global Engine Error: {e}")
+    finally:
+        # 🔓 فتح القفل للسماح بمسابقة جديدة
+        for cid in all_chats: active_broadcasts.discard(cid)
+            
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
 # ======================================================
