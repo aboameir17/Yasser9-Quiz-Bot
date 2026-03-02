@@ -2099,55 +2099,57 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                 if isinstance(m, types.Message): 
                     messages_to_delete[all_chats[idx]].append(m.message_id)
 
-            # انتظار الإجابة
-            t_limit = int(quiz_data.get('time_limit', 15))
-            start_wait = time.time()
-            while time.time() - start_wait < t_limit:
-                if all(not active_quizzes.get(c, {}).get('active', False) for c in all_chats): break
-                await asyncio.sleep(0.4)
+            # انتظار الإجابة مع محرك الانتظار الذكي
+t_limit = int(quiz_data.get('time_limit', 15))
+start_wait = time.time()
 
-            # إغلاق السؤال وتحديث النقاط
-            res_tasks = []
-            for cid in all_chats:
-                if cid in active_quizzes:
-                    active_quizzes[cid]['active'] = False
+while time.time() - start_wait < t_limit:
+    # 🕵️ الفحص العبقري: إذا تم تعطيل 'active' في كل القروبات
+    if all(not active_quizzes.get(cid, {}).get('active', False) for cid in all_chats):
+        break  # 🏃‍♂️ اخرج من الانتظار فوراً واعرض النتائج
+    await asyncio.sleep(0.4)  # فحص كل نصف ثانية تقريباً
 
-                current_winners = active_quizzes.get(cid, {}).get('winners', [])
-                for w in current_winners:
-                    uid = w['id']
-                    if uid not in group_scores[cid]:
-                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                    group_scores[cid][uid]['points'] += 10
+# إغلاق السؤال وتحديث النقاط
+res_tasks = []
+for cid in all_chats:
+    if cid in active_quizzes:
+        active_quizzes[cid]['active'] = False
 
-                res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
-            await asyncio.gather(*res_tasks, return_exceptions=True)
+    current_winners = active_quizzes.get(cid, {}).get('winners', [])
+    for w in current_winners:
+        uid = w['id']
+        if uid not in group_scores[cid]:
+            group_scores[cid][uid] = {"name": w['name'], "points": 0}
+        group_scores[cid][uid]['points'] += 10
 
-            # العداد التنازلي للسؤال القادم
-            if i < total_q - 1:
-                for cid in all_chats:
-                    if cid in active_quizzes:
-                        active_quizzes[cid]['winners'] = []
-                count_tasks = [run_countdown(cid) for cid in all_chats]
-                await asyncio.gather(*count_tasks, return_exceptions=True)
-            else:
-                await asyncio.sleep(2)
+    res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
+await asyncio.gather(*res_tasks, return_exceptions=True)
 
-        # إرسال النتائج النهائية وحذف الرسائل
-        for cid in all_chats:
-            try: await send_final_results(cid, group_scores.get(cid, {}), total_q)
-            except: pass
-            for mid in messages_to_delete.get(cid, []):
-                try: await bot.delete_message(cid, mid)
-                except: pass
+# العداد التنازلي للسؤال القادم
+if i < total_q - 1:
+    for cid in all_chats:
+        if cid in active_quizzes:
+            active_quizzes[cid]['winners'] = []
+    count_tasks = [run_countdown(cid) for cid in all_chats]
+    await asyncio.gather(*count_tasks, return_exceptions=True)
+else:
+    await asyncio.sleep(2)
 
-    except Exception as e:
-        logging.error(f"🚨 Global Engine Fatal Error: {e}")
+# إرسال النتائج النهائية وحذف الرسائل
+for cid in all_chats:
+    try:
+        await send_final_results(cid, group_scores.get(cid, {}), total_q)
+    except:
+        pass
+    for mid in messages_to_delete.get(cid, []):
+        try:
+            await bot.delete_message(cid, mid)
+        except:
+            pass
 
-    finally:
-        # فتح القفل للسماح إذاعة جديدة
-        for cid in all_chats: 
-            active_broadcasts.discard(cid)
-
+# فتح القفل للسماح بإذاعة جديدة
+for cid in all_chats:
+    active_broadcasts.discard(cid)
             
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
