@@ -47,9 +47,9 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-active_quizzes = {}
-
 cancelled_groups = set() # لحفظ المجموعات التي ضغطت إلغاء مؤقتاً
+
+active_quizzes = {}
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
