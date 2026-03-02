@@ -2025,8 +2025,10 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
 # ==========================================
 # 🛰️ 3. المحرك الموحد للإذاعة (النسخة الإعجازية - ياسر المطور 2026)
 # 2️⃣ دالة العداد التنازلي (تعريفها هنا يمنع خطأ NameError في اللوج)
+# 1️⃣ صمام الأمان العالمي (خارج الدالة)
+active_broadcasts = set()
 
-# 2️⃣ دالة العداد التنازلي المصححة (تمنع خطأ NameError وتمنع التكرار)
+# 2️⃣ دالة العداد التنازلي المصححة
 async def run_countdown(chat_id):
     try:
         msg = await bot.send_message(chat_id, "⏳ استعدوا.. السؤال القادم بعد: 3")
@@ -2041,12 +2043,11 @@ async def run_countdown(chat_id):
 
 # 3️⃣ المحرك الرئيسي الموحد
 async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
-    # --- [ أ ] تصفية المجموعات ومنع التكرار الجذري (حل الـ 4 إجابات) ---
+    # --- [ أ ] تصفية المجموعات ومنع التكرار (حل مشكلة الـ 4 إجابات) ---
     input_ids = chat_ids if isinstance(chat_ids, list) else [chat_ids]
     try:
         res = supabase.table("groups_hub").select("group_id").eq("status", "active").eq("is_global", True).execute()
         db_ids = [row['group_id'] for row in res.data]
-        # 🔥 الدمج عبر set يضمن وجود كل معرف مرة واحدة فقط
         all_chats = list(set(input_ids + db_ids))
     except Exception as e:
         logging.error(f"⚠️ خطأ DB: {e}")
@@ -2054,19 +2055,37 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
 
     if not all_chats: return
 
-    # --- [ ب ] منع "الطلقة المزدوجة" (Lock) لمنع ظهور سؤالين ---
+    # --- [ ب ] منع "الطلقة المزدوجة" (حل مشكلة المسابقتين في وقت واحد) ---
     for cid in all_chats:
         if cid in active_broadcasts:
             logging.warning(f"⚠️ مسابقة نشطة بالفعل في {cid}")
-            return # نخرج فوراً إذا كانت هناك نسخة تعمل
-    
-    # حجز المجموعات
+            return
     for cid in all_chats: active_broadcasts.add(cid)
 
     try:
-        # --- [ ج ] تجهيز الأسئلة ---
-        # (يتم هنا جلب الأسئلة وتخزينها في selected_questions كما في منطقك السابق)
-        # ... كود الجلب ...
+        # --- [ ج ] جلب وتجهيز الأسئلة (إصلاح خطأ name 'selected_questions' is not defined) ---
+        raw_cats = quiz_data.get('cats', [])
+        if isinstance(raw_cats, str):
+            try: cat_ids_list = json.loads(raw_cats)
+            except: cat_ids_list = raw_cats.replace('[','').replace(']','').replace('"','').split(',')
+        else: cat_ids_list = raw_cats
+        cat_ids = [int(c) for c in cat_ids_list if str(c).strip().isdigit()]
+
+        is_bot = quiz_data.get("is_bot_quiz", False)
+        table = "bot_questions" if is_bot else "questions"
+        cat_col = "bot_category_id" if is_bot else "category_id"
+        
+        # تنفيذ الاستعلام لجلب الأسئلة
+        res_q = supabase.table(table).select("*, categories(name)" if not is_bot else "*").in_(cat_col, cat_ids).execute()
+        
+        if not res_q.data:
+            logging.error(f"⚠️ لم يتم العثور على أسئلة")
+            return
+
+        pool = res_q.data
+        random.shuffle(pool)
+        count = int(quiz_data.get('questions_count', 10))
+        selected_questions = pool[:count] # ✅ التعريف هنا يحل الخطأ
 
         total_q = len(selected_questions)
         group_scores = {cid: {} for cid in all_chats}
@@ -2077,7 +2096,6 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
             cat_name = q.get('category') or "عام"
 
-            # تفعيل الرادار
             for cid in all_chats:
                 global_active_quizzes[cid] = {
                     "active": True, "ans": ans, "winners": [], 
@@ -2090,7 +2108,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
                 'time_limit': quiz_data.get('time_limit', 15), 
                 'cat_name': cat_name,
-                'source': "إذاعة عالمية 🌐" # هذا السطر يحل مشكلة ظهور "مسابقة داخلية"
+                'source': "إذاعة عالمية 🌐" # يحل مشكلة "مسابقة خاصة"
             }) for cid in all_chats]
             
             q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
@@ -2105,10 +2123,10 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                 if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats): break
                 await asyncio.sleep(0.4)
 
-            # 6️⃣ إرسال النتائج اللحظية (تصفية الإجابات المكررة)
+            # 6️⃣ إرسال النتائج اللحظية (4 وسائط فقط) ✅
             res_tasks = []
             for cid in all_chats:
-                global_active_quizzes[cid]['active'] = False
+                if cid in global_active_quizzes: global_active_quizzes[cid]['active'] = False
                 winners = global_active_quizzes[cid].get('winners', [])
                 
                 for w in winners:
@@ -2116,24 +2134,32 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     if uid not in group_scores[cid]: group_scores[cid][uid] = {"name": w['name'], "points": 0}
                     group_scores[cid][uid]['points'] += 10
                 
-                # إرسال نتيجة واحدة فقط لكل جروب (4 وسائط)
                 res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid]))
             
             await asyncio.gather(*res_tasks, return_exceptions=True)
 
-            # 7️⃣ العداد التنازلي (حماية من الانهيار)
+            # 7️⃣ العداد التنازلي بين الأسئلة
             if i < total_q - 1:
                 try:
                     count_tasks = [run_countdown(cid) for cid in all_chats]
                     await asyncio.gather(*count_tasks, return_exceptions=True)
                 except: await asyncio.sleep(3)
+            else: await asyncio.sleep(2)
+
+        # 8️⃣ النتائج النهائية والتنظيف
+        for cid in all_chats:
+            try: await send_final_results(cid, group_scores.get(cid, {}), total_q)
+            except: pass
+            
+            for mid in messages_to_delete.get(cid, []):
+                try: await bot.delete_message(cid, mid)
+                except: pass
 
     except Exception as e:
         logging.error(f"🚨 Global Engine Fatal Error: {e}")
     finally:
-        # 🔓 فتح القفل (تحرير المجموعات)
+        # 🔓 فتح القفل (تحرير المجموعات لبدء مسابقة جديدة)
         for cid in all_chats: active_broadcasts.discard(cid)
-
             
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
