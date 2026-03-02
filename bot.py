@@ -2084,17 +2084,24 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
         else:
             await asyncio.sleep(2)
 
+    # 8️⃣ [إعلان النتائج النهائية لجميع المجموعات]
+    hashtags = "\n\n#BinanceHODLerBREV #ZTCBinanceTGE #ETHWhaleWatch #USJobsData #CPIWatch #BTCVSGOLD #WriteToEarnUpgrade"
+    final_tasks = []
+    
+    for cid in all_chats:
+        scores = group_scores.get(cid, {})
+        if scores:
             # استدعاء قالب لوحة الشرف النهائية
             final_tasks.append(send_final_results(cid, scores, total_q, is_pub, extra_text=hashtags))
         else:
+            # رسالة ختامية في حال عدم وجود نقاط
             final_tasks.append(bot.send_message(cid, f"🏁 انتهت المسابقة العالمية! حظاً أوفر المرة القادمة.{hashtags}"))
             
+    # تنفيذ إرسال النتائج لكل المجموعات بالتوازي
     await asyncio.gather(*final_tasks, return_exceptions=True)
-    
-    # ======================================================
-    # --- [ 🧹 اللمسة الأخيرة: تنظيف الشات الشامل ] ---
-    # ======================================================
-    for cid in chat_ids:
+
+    # 🧹 [اللمسة الأخيرة: تنظيف الشات الشامل]
+    for cid in all_chats:
         for mid in messages_to_delete.get(cid, []):
             try:
                 await bot.delete_message(cid, mid)
