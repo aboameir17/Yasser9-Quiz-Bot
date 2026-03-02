@@ -19,9 +19,8 @@ logging.basicConfig(level=logging.INFO)
 # --- [ 1. إعدادات الهوية والاتصال ] ---
 ADMIN_ID = 7988144062
 OWNER_USERNAME = "@Ya_79k"
-
+API_TOKEN = "7948017595:AAHUNGEOVuMX6h61D9aM49tUxjz8F93tmHE"
 # سحب التوكينات من Render (لن يعمل البوت بدونها في الإعدادات)
-API_TOKEN = os.getenv('BOT_TOKEN')
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_KEY = os.getenv('SUPABASE_KEY')
 
