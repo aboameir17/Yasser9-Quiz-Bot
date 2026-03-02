@@ -2022,13 +2022,116 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
     await send_final_results(chat_id, overall_scores, len(questions))
 
 # ==========================================
-# 🛰️ 3. المحرك الموحد للإذاعة (النسخة الصافية - رادارات عالمية)
+# 🛰️ 3. المحرك الموحد للإذاعة (The Master Engine - النسخة النهائية الصافية)
 # ==========================================
+async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
+    try:
+        # 1️⃣ [الخطوة 1] جلب مجموعات الإذاعة ودمجها (مهمة جداً)
+        try:
+            res = supabase.table("groups_hub").select("group_id").eq("status", "active").eq("is_global", True).execute()
+            db_ids = [row['group_id'] for row in res.data] [cite: 1, 2]
+            all_chats = list(set((chat_ids if isinstance(chat_ids, list) else [chat_ids]) + db_ids)) [cite: 3]
+        except Exception as e:
+            logging.error(f"⚠️ خطأ في قاعدة البيانات: {e}")
+            all_chats = list(set(chat_ids if isinstance(chat_ids, list) else [chat_ids]))
 
-                        
+        if not all_chats: return
+
+        # 2️⃣ [الخطوة 2] تجهيز الأسئلة والنتائج
+        # (ملاحظة: تأكد من تعريف selected_questions هنا بناءً على طلبك السابق)
+        group_scores = {cid: {} for cid in all_chats}
+        total_q = len(selected_questions)
+        messages_to_delete = {cid: [] for cid in all_chats}
+
+        # 3️⃣ دورة البث الموحدة
+        for i, q in enumerate(selected_questions):
+            ans = str(q.get('correct_answer') or q.get('answer_text') or q.get('answer') or "").strip() [cite: 4]
+            cat_name = q.get('category') or "عام"
+
+            # 🔥 تفعيل الرادار العالمي (global_active_quizzes)
+            for cid in all_chats:
+                global_active_quizzes[cid] = {
+                    "active": True, 
+                    "ans": ans, 
+                    "winners": [], 
+                    "wrong_answers": [],
+                    "participants": all_chats, 
+                    "mode": quiz_data.get('mode', 'السرعة ⚡'), 
+                    "start_time": time.time() [cite: 6, 7]
+                }
+
+            # 4️⃣ بث السؤال (الطلقة الموحدة)
+            send_tasks = [send_quiz_question(cid, q, i+1, total_q, {
+                'owner_name': owner_name, 'mode': quiz_data.get('mode', 'السرعة ⚡'), 
+                'time_limit': quiz_data.get('time_limit', 15), 'cat_name': cat_name [cite: 8]
+            }) for cid in all_chats]
+            
+            q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True) [cite: 9]
+            
+            for idx, m in enumerate(q_msgs):
+                if isinstance(m, types.Message):
+                    messages_to_delete[all_chats[idx]].append(m.message_id)
+
+            # 5️⃣ انتظار الإجابة (مراقبة الرادار العالمي)
+            t_limit = int(quiz_data.get('time_limit', 15)) [cite: 10]
+            start_wait = time.time()
+            while time.time() - start_wait < t_limit:
+                if all(not global_active_quizzes.get(cid, {}).get('active', False) for cid in all_chats): [cite: 11]
+                    break
+                await asyncio.sleep(0.4)
+
+            # 6️⃣ إغلاق النشاط وتوزيع النتائج اللحظية
+            for cid in all_chats:
+                if cid in global_active_quizzes:
+                    global_active_quizzes[cid]['active'] = False [cite: 12]
+            
+            res_tasks = []
+            for cid in all_chats:
+                winners = global_active_quizzes[cid].get('winners', [])
+                wrongs = global_active_quizzes[cid].get('wrong_answers', [])
+                
+                for w in winners:
+                    uid = w['id']
+                    if uid not in group_scores[cid]:
+                        group_scores[cid][uid] = {"name": w['name'], "points": 0} [cite: 13]
+                    group_scores[cid][uid]['points'] += 10 [cite: 14]
+                
+                if winners:
+                    asyncio.create_task(save_points_to_supabase(cid, winners)) [cite: 15]
+                
+                res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid], wrongs)) [cite: 16]
+            
+            await asyncio.gather(*res_tasks, return_exceptions=True)
+
+            # 7️⃣ العداد التنازلي بين الأسئلة
+            if i < total_q - 1:
+                # استدعاء دالة العداد التنازلي الموحدة (تأكد من تعريفها)
+                count_tasks = [run_countdown(cid) for cid in all_chats] [cite: 17, 18]
+                await asyncio.gather(*count_tasks, return_exceptions=True)
+            else:
+                await asyncio.sleep(2) [cite: 20]
+
+        # 8️⃣ [إعلان النتائج النهائية]
+        final_tasks = []
+        for cid in all_chats:
+            scores = group_scores.get(cid, {})
+            if scores:
+                final_tasks.append(send_final_results(cid, scores, total_q))
+            else:
+                final_tasks.append(bot.send_message(cid, "🏁 انتهت المسابقة! حظاً أوفر المرة القادمة."))
+                
+        await asyncio.gather(*final_tasks, return_exceptions=True)
+
+        # 🧹 [اللمسة الأخيرة: تنظيف الشات]
+        for cid in all_chats:
+            for mid in messages_to_delete.get(cid, []):
+                try:
+                    await bot.delete_message(cid, mid) [cite: 21]
+                except:
+                    pass
 
     except Exception as e:
-        logging.error(f"🚨 Global Broadcast Error: {e}")
+        logging.error(f"Global Engine Error: {e}")
 
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
