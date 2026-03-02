@@ -2224,63 +2224,62 @@ def is_answer_correct(user_msg, correct_ans):
 
     return False
 
-# ---- رصد الإجابات (Check Answers) ----
-# ---- رادار الإجابات الموحد (الخاص والعالمي) ----
+# ---- رادار الإجابات الموحد والمحمي من التكرار ----
 @dp.message_handler(lambda m: not m.text.startswith('/'))
-async def unified_answer_checker(m: types.Message):
+async def unified_check_handler(m: types.Message):
     cid = m.chat.id
     uid = m.from_user.id
-    user_text = m.text.strip()
+    user_raw = m.text.strip()
 
-    # 1️⃣ أولاً: التحقق من المسابقة العالمية (الإذاعة)
-    # نتحقق من وجود الجروب في رادار الإذاعة وأن السؤال نشط
-    global_quiz = global_active_quizzes.get(cid)
-    if global_quiz and global_quiz.get('active'):
-        # منطق التحقق العالمي
-        correct_ans = str(global_quiz['ans']).strip()
-        if is_answer_correct(user_text, correct_ans):
-            # التأكد أن المستخدم لم يفز مسبقاً
-            if not any(w['id'] == uid for w in global_quiz['winners']):
-                elapsed = round(time.time() - global_quiz['start_time'], 2)
+    # 1️⃣ الفحص الأول: هل نحن في "إذاعة عالمية"؟ 🌐
+    # نبحث في رادار الإذاعة (global_active_quizzes)
+    quiz_global = global_active_quizzes.get(cid)
+    
+    if quiz_global and quiz_global.get('active'):
+        correct_raw = str(quiz_global['ans']).strip()
+        
+        if is_answer_correct(user_raw, correct_raw):
+            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال العالمي
+            if not any(w['id'] == uid for w in quiz_global['winners']):
+                elapsed = round(time.time() - quiz_global['start_time'], 2)
                 
-                # تسجيل الفوز في الإذاعة
-                global_quiz['winners'].append({
+                # تسجيل الفوز العالمي
+                quiz_global['winners'].append({
                     "name": m.from_user.first_name, 
                     "id": uid,
                     "time": elapsed
                 })
                 
-                # إذا كان الوضع "سرعة"، نغلق السؤال في كل المجموعات المشاركة
-                if global_quiz.get('mode') == 'السرعة ⚡':
-                    participants = global_quiz.get('participants', [cid])
+                # إذا كان وضع السرعة، نغلق السؤال في كل المجموعات المشاركة فوراً
+                if quiz_global.get('mode') == 'السرعة ⚡':
+                    participants = quiz_global.get('participants', [cid])
                     for p_cid in participants:
                         if p_cid in global_active_quizzes:
                             global_active_quizzes[p_cid]['active'] = False
-                    
-                    await m.reply(f"🚀 <b>إجابة عالمية!</b>\nأنت الأسرع في الإذاعة خلال {elapsed} ثانية!", parse_mode="HTML")
-                else:
-                    await m.reply(f"✅ <b>إجابة صحيحة في التحدي العالمي!</b>", parse_mode="HTML")
-                return # نخرج هنا لكي لا يعالجه الرادار الخاص (يمنع التكرار)
+                
+                await m.reply(f"🚀 <b>إجابة عالمية!</b>\nأنت الأسرع في الإذاعة خلال {elapsed} ثانية!", parse_mode="HTML")
+                return # 🛑 خروج فوري لمنع الانتقال للفحص الخاص
 
-    # 2️⃣ ثانياً: التحقق من المسابقة الخاصة (إذا لم تكن عالمية)
+    # 2️⃣ الفحص الثاني: هل نحن في "مسابقة خاصة"؟ 🏠
+    # إذا لم يجد مسابقة عالمية نشطة، يبحث في الخاصة (active_quizzes)
     elif cid in active_quizzes and active_quizzes[cid]['active']:
-        private_quiz = active_quizzes[cid]
-        correct_ans = str(private_quiz['ans']).strip()
+        quiz_private = active_quizzes[cid]
+        correct_raw = str(quiz_private['ans']).strip()
         
-        if is_answer_correct(user_text, correct_ans):
-            if not any(w['id'] == uid for w in private_quiz['winners']):
-                private_quiz['winners'].append({
+        if is_answer_correct(user_raw, correct_raw):
+            if not any(w['id'] == uid for w in quiz_private['winners']):
+                quiz_private['winners'].append({
                     "name": m.from_user.first_name, 
                     "id": uid
                 })
                 
-                if private_quiz.get('mode') == 'السرعة ⚡':
-                    private_quiz['active'] = False
+                if quiz_private.get('mode') == 'السرعة ⚡':
+                    quiz_private['active'] = False
                 
-                # هنا لا ترسل رسالة "إجابة صحيحة" يدوية إذا كان المحرك 
-                # هو من يرسل قالب النتائج لاحقاً، لتجنب التكرار.
-                # فقط نحدث البيانات والمحرك سيتكفل بالباقي في دورته.
-            
+                # ملاحظة: إذا كان المحرك هو من يرسل قالب النتائج، لا تضع await m.reply هنا
+                # لتجنب ظهور "إجابة صحيحة" ثم "قالب النتائج" (تكرار آخر)
+                return
+
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
