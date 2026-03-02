@@ -2074,6 +2074,62 @@ async def check_ans(m: types.Message):
                     active_quizzes[cid]['active'] = False
 
 # ==========================================
+# 4. نظام رصد الإجابات العالمي (رادار ياسر المطور) 📡
+# ==========================================
+@dp.message_handler(lambda m: not m.text.startswith('/'))
+async def check_ans_global(m: types.Message):
+    cid = m.chat.id
+    uid = m.from_user.id
+    
+    # التأكد أن المجموعة جزء من إذاعة نشطة (global_active_quizzes)
+    quiz = global_active_quizzes.get(cid)
+    if not quiz or not quiz.get('active'):
+        return
+        
+    # التحقق: هل هذه فعلاً إذاعة (أكثر من مجموعة)؟
+    participants = quiz.get('participants', [])
+    if len(participants) <= 1:
+        return # نترك المهمة للمحرك الخاص أعلاه
+
+    user_raw = m.text.strip()
+    correct_raw = quiz['ans']
+    
+    # ⚖️ ميزان العدل
+    if is_answer_correct(user_raw, correct_raw):
+        if not any(w['id'] == uid for w in quiz['winners']):
+            elapsed = round(time.time() - quiz['start_time'], 2)
+            
+            # تسجيل الفوز العالمي
+            quiz['winners'].append({
+                "name": m.from_user.first_name, 
+                "id": uid,
+                "time": elapsed
+            })
+            
+            # 🏁 منطق الإغلاق العالمي (السرعة ⚡)
+            if quiz.get('mode') == 'السرعة ⚡':
+                for other_cid in participants:
+                    if other_cid in global_active_quizzes:
+                        global_active_quizzes[other_cid]['active'] = False
+                        
+                        # تنبيه المجموعات الأخرى
+                        if other_cid != cid:
+                            try:
+                                await bot.send_message(other_cid, f"🏁 <b>خُطفت الإجابة!</b>\nالبطل <b>{m.from_user.first_name}</b> أجاب أولاً من مجموعة أخرى! 🚀", parse_mode="HTML")
+                            except: pass
+                
+                await m.reply(f"🚀 <b>إجابة عالمية!</b>\nأنت الأسرع في الإذاعة خلال {elapsed} ثانية!", parse_mode="HTML")
+            else:
+                await m.reply(f"✅ <b>إجابة صحيحة في التحدي العالمي!</b>", parse_mode="HTML")
+
+    else:
+        # تسجيل المخطئين في الإذاعة
+        if 'wrong_answers' not in quiz: quiz['wrong_answers'] = []
+        u_name = m.from_user.first_name
+        if u_name not in quiz['wrong_answers'] and not any(w['id'] == uid for w in quiz['winners']):
+            quiz['wrong_answers'].append(u_name)
+            
+# ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
 class AdminStates(StatesGroup):
