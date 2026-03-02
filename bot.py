@@ -470,7 +470,7 @@ async def get_group_status(chat_id):
         return "error"
 
 
-async def engine_broadcast_and_wait(c: types.CallbackQuery, quiz_id: int, owner_id: int):
+async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id: int):
     """محرك الإذاعة العامة - إرسال الدعوات وانتظار الانضمام"""
     try:
         # 1. جلب بيانات المسابقة بأمان
