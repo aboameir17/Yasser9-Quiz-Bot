@@ -2101,28 +2101,43 @@ for idx, m in enumerate(q_msgs):
                 if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats): break
                 await asyncio.sleep(0.4)
 
-            # 6️⃣ إغلاق النشاط والنتائج اللحظية (4 وسائط فقط) ✅
+            # 6️⃣ إغلاق النشاط وتحديث النقاط (المنطق المصفى) ✅
             res_tasks = []
             for cid in all_chats:
-                if cid in global_active_quizzes: global_active_quizzes[cid]['active'] = False
-                winners = global_active_quizzes[cid].get('winners', [])
+                # 1. إغلاق السؤال في هذا الجروب
+                if cid in global_active_quizzes:
+                    global_active_quizzes[cid]['active'] = False
                 
-                for w in winners:
+                # 2. جلب فائزين هذا الجروب فقط في هذا السؤال
+                current_winners = global_active_quizzes.get(cid, {}).get('winners', [])
+                
+                # 3. تحديث قاموس النقاط العالمي (group_scores)
+                # نحدث فقط من فازوا في هذا السؤال ولم تضف نقاطهم بعد
+                for w in current_winners:
                     uid = w['id']
-                    if uid not in group_scores[cid]: group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                    if uid not in group_scores[cid]:
+                        group_scores[cid][uid] = {"name": w['name'], "points": 0}
+                    
+                    # إضافة النقاط (تأكد أن الرادار لا يضيف نقاط، المحرك فقط يضيفها هنا)
                     group_scores[cid][uid]['points'] += 10
-                
-                res_tasks.append(send_creative_results(cid, ans, winners, group_scores[cid]))
+
+                # 4. تجهيز مهمة إرسال القالب (المحرك فقط هو من يرسل)
+                res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
             
+            # إرسال النتائج لكل المجموعات دفعة واحدة
             await asyncio.gather(*res_tasks, return_exceptions=True)
 
-            # 7️⃣ العداد التنازلي بين الأسئلة (يمنع الانهيار المزدوج)
+            # 7️⃣ العداد التنازلي وتصفير الفائزين للسؤال القادم
             if i < total_q - 1:
-                try:
-                    count_tasks = [run_countdown(cid) for cid in all_chats]
-                    await asyncio.gather(*count_tasks, return_exceptions=True)
-                except: await asyncio.sleep(3)
-            else: await asyncio.sleep(2)
+                # تصفير قائمة الفائزين في الرادار استعداداً للسؤال الجديد
+                for cid in all_chats:
+                    if cid in global_active_quizzes:
+                        global_active_quizzes[cid]['winners'] = []
+                
+                count_tasks = [run_countdown(cid) for cid in all_chats]
+                await asyncio.gather(*count_tasks, return_exceptions=True)
+            else:
+                await asyncio.sleep(2)
 
         # 8️⃣ النتائج النهائية والتنظيف
         for cid in all_chats:
