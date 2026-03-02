@@ -48,7 +48,9 @@ dp = Dispatcher(bot, storage=storage)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 active_quizzes = {}
+
 global_active_quizzes = {}
+
 active_broadcasts = set()
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
