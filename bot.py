@@ -2085,9 +2085,6 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             await asyncio.sleep(2)
 
     # 8️⃣ [إعلان النتائج النهائية لجميع المجموعات]
-    hashtags = "\n\n#BinanceHODLerBREV #ZTCBinanceTGE #ETHWhaleWatch #USJobsData #CPIWatch #BTCVSGOLD #WriteToEarnUpgrade"
-    final_tasks = []
-    
     for cid in all_chats:
         scores = group_scores.get(cid, {})
         if scores:
