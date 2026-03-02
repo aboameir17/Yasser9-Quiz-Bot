@@ -134,7 +134,7 @@ async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
     """تصميم ياسر المطور: دمج الفائزين والترتيب في رسالة واحدة"""
     msg =  "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n"
     msg += f"✅ الإجابة الصحيحة: <b>{correct_ans}</b>\n"
-    msg += "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n\n"
+    msg += "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅❃\n\n"
     
     if winners:
         msg += "❃─── { جواب صح} ───❃\n"
@@ -150,11 +150,8 @@ async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
         medal = medals[i] if i < 3 else "👤"
         msg += f"{medal} {player['name']} — {player['points']}\n"
     
-    await bot.send_message(chat_id, msg, parse_mode="HTML")
-    
-    # ✅ التعديل الجوهري هنا: أضفنا return ليعود كائن الرسالة للمحرك
+    # ✅ التصحيح: سطر واحد فقط للإرسال والـ return معاً
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
-    
 async def send_final_results(chat_id, scores, total_q, is_public=False):
     """
     إصلاح ياسر المطور: عرض العباقرة في كل الحالات مع معالجة الأخطاء
