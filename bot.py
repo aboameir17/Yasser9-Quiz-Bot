@@ -1995,10 +1995,10 @@ async def run_countdown(chat_id):
     except: pass
 
 # 3️⃣ المحرك الرئيسي الموحد
+# 3️⃣ المحرك الرئيسي الموحد (نسخة ياسر المطورة 2026)
 async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
     # --- [ أ ] تصفية المجموعات ومنع التكرار الجذري ---
     input_ids = chat_ids if isinstance(chat_ids, list) else [chat_ids]
-    # 🔥 الحل القاطع: نعتمد فقط على القائمة القادمة من "المشاركين" لمنع دبلجة الإرسال
     all_chats = list(set(input_ids))
 
     if not all_chats: return
@@ -2038,10 +2038,37 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
         group_scores = {cid: {} for cid in all_chats}
         messages_to_delete = {cid: [] for cid in all_chats}
 
-        # --- [ د ] دورة البث الموحدة (يجب أن تكون داخل الـ try) ---
+        # 🟢 [الخطوة 1] فتح سجل للمسابقة في سوبابيس (active_quizzes)
+        current_quiz_db_id = None
+        try:
+            quiz_entry = supabase.table("active_quizzes").insert({
+                "quiz_name": f"إذاعة {owner_name}",
+                "created_by": 2026, 
+                "is_global": True,
+                "is_active": True,
+                "participants_ids": all_chats, 
+                "total_questions": total_q
+            }).execute()
+            
+            if quiz_entry.data:
+                current_quiz_db_id = quiz_entry.data[0]['id']
+                logging.info(f"✅ تم بدء السجل الرقمي بنجاح ID: {current_quiz_db_id}")
+        except Exception as e:
+            logging.error(f"❌ خطأ سوبابيس (بدء المسابقة): {e}")
+
+        # --- [ د ] دورة البث الموحدة ---
         for i, q in enumerate(selected_questions):
             ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
             cat_name = q.get('category') or "عام"
+
+            # 🔵 [الخطوة 2] تحديث الإجابة الحالية في السجل الرقمي مع كل سؤال
+            if current_quiz_db_id:
+                try:
+                    supabase.table("active_quizzes").update({
+                        "current_answer": ans,
+                        "current_index": i + 1
+                    }).eq("id", current_quiz_db_id).execute()
+                except: pass
 
             for cid in all_chats:
                 global_active_quizzes[cid] = {
@@ -2049,12 +2076,13 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     "ans": ans,
                     "winners": [],
                     "mode": quiz_data.get('mode', 'السرعة ⚡'),
-                    "start_time": time.time()
+                    "start_time": time.time(),
+                    "db_quiz_id": current_quiz_db_id  # للرصد لاحقاً
                 }
 
-            # 4️⃣ بث السؤال
+            # 4️⃣ بث السؤال (إذاعة عالمية 🌐)
             send_tasks = [
-                send_quiz_question(cid, q, i + 1, total_q, {
+                send_quiz_question(cid, q, i+1, total_q, {
                     'owner_name': owner_name,
                     'mode': quiz_data.get('mode', 'السرعة ⚡'),
                     'time_limit': quiz_data.get('time_limit', 15),
@@ -2063,14 +2091,13 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     'is_public': True
                 }) for cid in all_chats
             ]
-
             q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
 
             for idx, m in enumerate(q_msgs):
                 if isinstance(m, types.Message):
                     messages_to_delete[all_chats[idx]].append(m.message_id)
 
-            # 5️⃣ انتظار الإجابة
+            # 5️⃣ محرك الانتظار الذكي (نظام الإيقاف الفوري)
             t_limit = int(quiz_data.get('time_limit', 15))
             start_wait = time.time()
             while time.time() - start_wait < t_limit:
@@ -2078,7 +2105,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     break
                 await asyncio.sleep(0.4)
 
-            # 6️⃣ إغلاق النشاط وتحديث النقاط
+            # 6️⃣ إغلاق السؤال وتحديث النقاط
             res_tasks = []
             for cid in all_chats:
                 if cid in global_active_quizzes:
@@ -2092,10 +2119,9 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     group_scores[cid][uid]['points'] += 10
 
                 res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
-            
             await asyncio.gather(*res_tasks, return_exceptions=True)
 
-            # 7️⃣ العداد التنازلي
+            # 7️⃣ العداد التنازلي للسؤال القادم
             if i < total_q - 1:
                 for cid in all_chats:
                     if cid in global_active_quizzes:
@@ -2105,19 +2131,25 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             else:
                 await asyncio.sleep(2)
 
-        # 8️⃣ النتائج النهائية
+        # 8️⃣ النتائج النهائية والتنظيف الرقمي
         for cid in all_chats:
             try: await send_final_results(cid, group_scores.get(cid, {}), total_q)
             except: pass
+            
             for mid in messages_to_delete.get(cid, []):
                 try: await bot.delete_message(cid, mid)
                 except: pass
+        
+        # إغلاق المسابقة في سوبابيس نهائياً
+        if current_quiz_db_id:
+            try: supabase.table("active_quizzes").update({"is_active": False}).eq("id", current_quiz_db_id).execute()
+            except: pass
 
     except Exception as e:
         logging.error(f"🚨 Global Engine Fatal Error: {e}")
     finally:
-        for cid in all_chats: 
-            active_broadcasts.discard(cid)
+        # 🔓 فتح القفل للسماح ببدء إذاعة جديدة
+        for cid in all_chats: active_broadcasts.discard(cid)
         
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
