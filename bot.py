@@ -1950,7 +1950,7 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
                 overall_scores[uid]['points'] += 10
         
             # 6. عرض لوحة المبدعين اللحظية
-            await send_cccreative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
+            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
         
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
