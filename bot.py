@@ -1420,7 +1420,7 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             if not q_data: 
                 return await c.answer("❌ المسابقة غير موجودة!")
 
-             2️⃣ التحقق من النطاق (موحد 2026)
+            # 2️⃣ التحقق من النطاق (موحد 2026)
         scope = q_data.get('scope', 'local')
 
         if scope == 'global':
