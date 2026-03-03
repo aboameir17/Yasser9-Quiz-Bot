@@ -2244,7 +2244,7 @@ def is_answer_correct(user_msg, correct_ans):
     return False
 
 # ==========================================
-# 🎯 رادار الإجابات الموحد (يمنع التكرار + يرصد في سوبابيس)
+# 🎯 رادار الإجابات الموحد (نسخة ياسر النهائية)
 # ==========================================
 @dp.message_handler(lambda m: not m.text or not m.text.startswith('/'))
 async def unified_answer_checker(m: types.Message):
@@ -2268,6 +2268,7 @@ async def unified_answer_checker(m: types.Message):
                     asyncio.create_task(
                         supabase.table("answers_log").insert({
                             "quiz_id": db_quiz_id,
+                            "question_no": quiz_g.get('current_index', 1),
                             "chat_id": cid,
                             "user_id": uid,
                             "user_name": m.from_user.first_name,
@@ -2283,18 +2284,17 @@ async def unified_answer_checker(m: types.Message):
                     "time": elapsed
                 })
                 
-                # داخل الرادار عند الإجابة الصحيحة في وضع السرعة:
+                # 📣 [إعلان الفوز] - تم نقله هنا ليعلن في "السرعة" و "العادي"
+                await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>\nتم تسجيل نقاطك في الإذاعة العالمية. 🚀", parse_mode="HTML")
+
+                # ⚡ [إغلاق السؤال] فقط إذا كان وضع السرعة
                 if quiz_g.get('mode') == 'السرعة ⚡':
                     participants = quiz_g.get('participants_ids', []) 
                     if not participants: participants = [cid]
-
                     for p_cid in participants:
                         if p_cid in global_active_quizzes:
                             global_active_quizzes[p_cid]['active'] = False
-                            
-                    await m.reply(f"🚀 <b>كفو! خطفتها عالمياً!</b>", parse_mode="HTML")
                 
-                # 🛑 هذه الـ return هي "الحارس" الذي يمنع النزول للمسابقات الخاصة
                 return 
 
     # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
@@ -2303,15 +2303,16 @@ async def unified_answer_checker(m: types.Message):
         correct_ans = str(quiz_p['ans']).strip()
         
         if is_answer_correct(user_text, correct_ans):
-            # تسجيل الفوز في المسابقة الخاصة (هنا لا نستخدم participants_ids لأنها قروب واحد)
             if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
                 quiz_p['winners'].append({"name": m.from_user.first_name, "id": uid})
                 
                 if quiz_p.get('mode') == 'السرعة ⚡':
                     quiz_p['active'] = False
                 
-                # إشعار الفوز (اختياري هنا لأن المحرك سيتولى الباقي)
+                # إعلان الفوز للمسابقات الخاصة
+                await m.reply(f"✅ كفو! إجابة صحيحة.")
                 return
+                            
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
