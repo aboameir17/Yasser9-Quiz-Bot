@@ -506,16 +506,16 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
         for emoji in timer_emojis:
             # القالب الملكي المحدث
             text = (
-                f"📢 **إعلان: مسابقة عالمية منطلقة الآن!** 🌐\n"
+                f"📢 **إعلان: مسابقة عامة منطلقة الآن!** 🌐\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"⏳ ستبدأ المسابقة بعد انتهاء العد التنازلي:\n"
+                f"⏰ {emoji} ™️\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"🏆 المسابقة: **{quiz_name}**\n"
                 f"📂 القسم: **{cat_info}**\n"
                 f"🔢 عدد الأسئلة: **{q_count}**\n"
                 f"⚙️ النوع: **{q_mode}**\n"
                 f"👤 المنظم: **{c.from_user.first_name}**\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"⏳ ستبدأ المسابقة بعد انتهاء العد التنازلي:\n"
-                f"🔥 {emoji} 🔥\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"👈 إن كنت لا تريد المشاركة اضغط إلغاء أدناه."
             )
@@ -2299,7 +2299,19 @@ async def unified_answer_checker(m: types.Message):
 
     # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
     elif cid in active_quizzes and active_quizzes[cid].get('active'):
+        quiz_p = active_quizzes[cid]
+        correct_ans = str(quiz_p['ans']).strip()
+        
+        if is_answer_correct(user_text, correct_ans):
+            # تسجيل الفوز في المسابقة الخاصة (هنا لا نستخدم participants_ids لأنها قروب واحد)
+            if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
+                quiz_p['winners'].append({"name": m.from_user.first_name, "id": uid})
                 
+                if quiz_p.get('mode') == 'السرعة ⚡':
+                    quiz_p['active'] = False
+                
+                # إشعار الفوز (اختياري هنا لأن المحرك سيتولى الباقي)
+                return
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
