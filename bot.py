@@ -2283,23 +2283,23 @@ async def unified_answer_checker(m: types.Message):
                     "time": elapsed
                 })
                 
-                # إغلاق السؤال عالمياً إذا كان وضع السرعة
+                # داخل الرادار عند الإجابة الصحيحة في وضع السرعة:
                 if quiz_g.get('mode') == 'السرعة ⚡':
-                    participants = quiz_g.get('participants', [cid])
+                    participants = quiz_g.get('participants_ids', []) 
+                    if not participants: participants = [cid]
+
                     for p_cid in participants:
                         if p_cid in global_active_quizzes:
                             global_active_quizzes[p_cid]['active'] = False
-                    
-                    await m.reply(f"🚀 <b>إجابة عالمية!</b>\nأنت الأسرع في الإذاعة خلال {elapsed} ثانية!", parse_mode="HTML")
-                else:
-                    await m.reply(f"✅ <b>إجابة صحيحة في التحدي العالمي!</b>", parse_mode="HTML")
+                            
+                    await m.reply(f"🚀 <b>كفو! خطفتها عالمياً!</b>", parse_mode="HTML")
                 
+                # 🛑 هذه الـ return هي "الحارس" الذي يمنع النزول للمسابقات الخاصة
                 return 
 
     # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
     elif cid in active_quizzes and active_quizzes[cid].get('active'):
-        # ... (نفس المنطق أعلاه مع تغيير active_quizzes[cid]) ...
-        pass
+                
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
