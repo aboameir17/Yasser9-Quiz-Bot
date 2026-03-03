@@ -2011,7 +2011,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
     for cid in all_chats: active_broadcasts.add(cid)
 
     try:
-        # --- [ ج ] جلب وتجهيز الأسئلة (إصلاح خطأ selected_questions) ---
+        # --- [ ج ] جلب وتجهيز الأسئلة ---
         raw_cats = quiz_data.get('cats', [])
         if isinstance(raw_cats, str):
             try: cat_ids_list = json.loads(raw_cats)
@@ -2023,117 +2023,92 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
         table = "bot_questions" if is_bot else "questions"
         cat_col = "bot_category_id" if is_bot else "category_id"
         
-        # 🛰️ جلب البيانات من سوبابيس
         res_q = supabase.table(table).select("*, categories(name)" if not is_bot else "*").in_(cat_col, cat_ids).execute()
         
         if not res_q.data:
-            logging.error(f"⚠️ لم يتم العثور على أسئلة في الأقسام المختارة")
+            logging.error(f"⚠️ لم يتم العثور على أسئلة")
             return
 
         pool = res_q.data
         random.shuffle(pool)
         count = int(quiz_data.get('questions_count', 10))
-        
-        # ✅ التعريف الصحيح للمتغير لحل مشكلة الـ NameError
         selected_questions = pool[:count] 
 
         total_q = len(selected_questions)
         group_scores = {cid: {} for cid in all_chats}
         messages_to_delete = {cid: [] for cid in all_chats}
 
-        # --- [ د ] دورة البث الموحدة ---
-for i, q in enumerate(selected_questions):
-    ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
-    cat_name = q.get('category') or "عام"
+        # --- [ د ] دورة البث الموحدة (يجب أن تكون داخل الـ try) ---
+        for i, q in enumerate(selected_questions):
+            ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
+            cat_name = q.get('category') or "عام"
 
-    for cid in all_chats:
-        global_active_quizzes[cid] = {
-            "active": True,
-            "ans": ans,
-            "winners": [],
-            "mode": quiz_data.get('mode', 'السرعة ⚡'),
-            "start_time": time.time()
-        }
+            for cid in all_chats:
+                global_active_quizzes[cid] = {
+                    "active": True,
+                    "ans": ans,
+                    "winners": [],
+                    "mode": quiz_data.get('mode', 'السرعة ⚡'),
+                    "start_time": time.time()
+                }
 
-    # 4️⃣ بث السؤال (إذاعة عالمية 🌐)
-    send_tasks = [
-        send_quiz_question(
-            cid,
-            q,
-            i + 1,
-            total_q,
-            {
-                'owner_name': owner_name,
-                'mode': quiz_data.get('mode', 'السرعة ⚡'),
-                'time_limit': quiz_data.get('time_limit', 15),
-                'cat_name': cat_name,
-                'source': "إذاعة عالمية 🌐",
-                'is_public': True
-            }
-        )
-        for cid in all_chats
-    ]
+            # 4️⃣ بث السؤال
+            send_tasks = [
+                send_quiz_question(cid, q, i + 1, total_q, {
+                    'owner_name': owner_name,
+                    'mode': quiz_data.get('mode', 'السرعة ⚡'),
+                    'time_limit': quiz_data.get('time_limit', 15),
+                    'cat_name': cat_name,
+                    'source': "إذاعة عالمية 🌐",
+                    'is_public': True
+                }) for cid in all_chats
+            ]
 
-    q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
+            q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
 
-    for idx, m in enumerate(q_msgs):
-        if isinstance(m, types.Message):
-            messages_to_delete[all_chats[idx]].append(m.message_id)
+            for idx, m in enumerate(q_msgs):
+                if isinstance(m, types.Message):
+                    messages_to_delete[all_chats[idx]].append(m.message_id)
 
-    # 5️⃣ انتظار الإجابة
-    t_limit = int(quiz_data.get('time_limit', 15))
-    start_wait = time.time()
+            # 5️⃣ انتظار الإجابة
+            t_limit = int(quiz_data.get('time_limit', 15))
+            start_wait = time.time()
+            while time.time() - start_wait < t_limit:
+                if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats):
+                    break
+                await asyncio.sleep(0.4)
 
-    while time.time() - start_wait < t_limit:
-        if all(
-            not global_active_quizzes.get(c, {}).get('active', False)
-            for c in all_chats
-        ):
-            break
-        await asyncio.sleep(0.4)
-            # 6️⃣ إغلاق النشاط وتحديث النقاط (المنطق المصفى) ✅
+            # 6️⃣ إغلاق النشاط وتحديث النقاط
             res_tasks = []
             for cid in all_chats:
-                # 1. إغلاق السؤال في هذا الجروب
                 if cid in global_active_quizzes:
                     global_active_quizzes[cid]['active'] = False
                 
-                # 2. جلب فائزين هذا الجروب فقط في هذا السؤال
                 current_winners = global_active_quizzes.get(cid, {}).get('winners', [])
-                
-                # 3. تحديث قاموس النقاط العالمي (group_scores)
-                # نحدث فقط من فازوا في هذا السؤال ولم تضف نقاطهم بعد
                 for w in current_winners:
                     uid = w['id']
                     if uid not in group_scores[cid]:
                         group_scores[cid][uid] = {"name": w['name'], "points": 0}
-                    
-                    # إضافة النقاط (تأكد أن الرادار لا يضيف نقاط، المحرك فقط يضيفها هنا)
                     group_scores[cid][uid]['points'] += 10
 
-                # 4. تجهيز مهمة إرسال القالب (المحرك فقط هو من يرسل)
                 res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
             
-            # إرسال النتائج لكل المجموعات دفعة واحدة
             await asyncio.gather(*res_tasks, return_exceptions=True)
 
-            # 7️⃣ العداد التنازلي وتصفير الفائزين للسؤال القادم
+            # 7️⃣ العداد التنازلي
             if i < total_q - 1:
-                # تصفير قائمة الفائزين في الرادار استعداداً للسؤال الجديد
                 for cid in all_chats:
                     if cid in global_active_quizzes:
                         global_active_quizzes[cid]['winners'] = []
-                
                 count_tasks = [run_countdown(cid) for cid in all_chats]
                 await asyncio.gather(*count_tasks, return_exceptions=True)
             else:
                 await asyncio.sleep(2)
 
-        # 8️⃣ النتائج النهائية والتنظيف
+        # 8️⃣ النتائج النهائية
         for cid in all_chats:
             try: await send_final_results(cid, group_scores.get(cid, {}), total_q)
             except: pass
-            
             for mid in messages_to_delete.get(cid, []):
                 try: await bot.delete_message(cid, mid)
                 except: pass
@@ -2141,9 +2116,9 @@ for i, q in enumerate(selected_questions):
     except Exception as e:
         logging.error(f"🚨 Global Engine Fatal Error: {e}")
     finally:
-        # 🔓 فتح القفل للسماح ببدء إذاعة جديدة لاحقاً
-        for cid in all_chats: active_broadcasts.discard(cid)
-            
+        for cid in all_chats: 
+            active_broadcasts.discard(cid)
+        
 # ======================================================
 # --- [ 🏁 المرحلة الأخيرة: إعلان النتائج وترحيل البيانات ] ---
 # ======================================================
