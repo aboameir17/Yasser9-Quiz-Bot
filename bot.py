@@ -2042,48 +2042,55 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
         messages_to_delete = {cid: [] for cid in all_chats}
 
         # --- [ د ] دورة البث الموحدة ---
-        for i, q in enumerate(selected_questions):
-            ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
-            cat_name = q.get('category') or "عام"
+for i, q in enumerate(selected_questions):
+    ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
+    cat_name = q.get('category') or "عام"
 
-            for cid in all_chats:
-                global_active_quizzes[cid] = {
-                    "active": True, "ans": ans, "winners": [], 
-                    "mode": quiz_data.get('mode', 'السرعة ⚡'), "start_time": time.time()
-                }
-
-            # 4️⃣ بث السؤال (تصحيح النطاق إلى إذاعة عالمية 🌐)
-send_tasks = [
-    send_quiz_question(
-        cid, 
-        q, 
-        i+1, 
-        total_q, 
-        {
-            'owner_name': owner_name, 
-            'mode': quiz_data.get('mode', 'السرعة ⚡'), 
-            'time_limit': quiz_data.get('time_limit', 15), 
-            'cat_name': cat_name,
-            'source': "إذاعة عالمية 🌐",
-            'is_public': True   # ✅ هذا هو السطر المهم
+    for cid in all_chats:
+        global_active_quizzes[cid] = {
+            "active": True,
+            "ans": ans,
+            "winners": [],
+            "mode": quiz_data.get('mode', 'السرعة ⚡'),
+            "start_time": time.time()
         }
-    ) 
-    for cid in all_chats
-]
 
-q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
+    # 4️⃣ بث السؤال (إذاعة عالمية 🌐)
+    send_tasks = [
+        send_quiz_question(
+            cid,
+            q,
+            i + 1,
+            total_q,
+            {
+                'owner_name': owner_name,
+                'mode': quiz_data.get('mode', 'السرعة ⚡'),
+                'time_limit': quiz_data.get('time_limit', 15),
+                'cat_name': cat_name,
+                'source': "إذاعة عالمية 🌐",
+                'is_public': True
+            }
+        )
+        for cid in all_chats
+    ]
 
-for idx, m in enumerate(q_msgs):
-    if isinstance(m, types.Message): 
-        messages_to_delete[all_chats[idx]].append(m.message_id)
+    q_msgs = await asyncio.gather(*send_tasks, return_exceptions=True)
 
-            # 5️⃣ انتظار الإجابة
-            t_limit = int(quiz_data.get('time_limit', 15))
-            start_wait = time.time()
-            while time.time() - start_wait < t_limit:
-                if all(not global_active_quizzes.get(c, {}).get('active', False) for c in all_chats): break
-                await asyncio.sleep(0.4)
+    for idx, m in enumerate(q_msgs):
+        if isinstance(m, types.Message):
+            messages_to_delete[all_chats[idx]].append(m.message_id)
 
+    # 5️⃣ انتظار الإجابة
+    t_limit = int(quiz_data.get('time_limit', 15))
+    start_wait = time.time()
+
+    while time.time() - start_wait < t_limit:
+        if all(
+            not global_active_quizzes.get(c, {}).get('active', False)
+            for c in all_chats
+        ):
+            break
+        await asyncio.sleep(0.4)
             # 6️⃣ إغلاق النشاط وتحديث النقاط (المنطق المصفى) ✅
             res_tasks = []
             for cid in all_chats:
