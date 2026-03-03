@@ -2265,28 +2265,26 @@ async def unified_answer_checker(m: types.Message):
                 # 🟢 [الرصد الرقمي] تسجيل الإجابة في جدول answers_log فوراً
                 db_quiz_id = quiz_g.get('db_quiz_id')
                 if db_quiz_id:
-                    asyncio.create_task(
-                        supabase.table("answers_log").insert({
-                            "quiz_id": db_quiz_id,
-                            "question_no": quiz_g.get('current_index', 1),
-                            "chat_id": cid,
-                            "user_id": uid,
-                            "user_name": m.from_user.first_name,
-                            "answer_text": user_text,
-                            "points_earned": 10
-                        }).execute()
-                    )
+                    # نستخدم to_thread لتشغيل الدالة التزامنية في خلفية البوت دون تعطيله
+                    def save_to_supabase():
+                        try:
+                            supabase.table("answers_log").insert({
+                                "quiz_id": db_quiz_id,
+                                "question_no": quiz_g.get('current_index', 1),
+                                "chat_id": cid,
+                                "user_id": uid,
+                                "user_name": m.from_user.first_name,
+                                "answer_text": user_text,
+                                "points_earned": 10
+                            }).execute()
+                        except Exception as e:
+                            logging.error(f"❌ خطأ سوبابيس: {e}")
 
-                # تسجيل الفوز في الرام (للمحرك)
-                quiz_g['winners'].append({
-                    "name": m.from_user.first_name, 
-                    "id": uid,
-                    "time": elapsed
-                })
-                
-                # 📣 [إعلان الفوز] - تم نقله هنا ليعلن في "السرعة" و "العادي"
-                await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>\nتم تسجيل نقاطك في الإذاعة العالمية. 🚀", parse_mode="HTML")
+                    # تشغيل عملية الحفظ في الخلفية
+                    asyncio.create_task(asyncio.to_thread(save_to_supabase))
 
+                # 🔵 [إعلان الفوز] - الآن سيعمل هذا السطر فوراً
+                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nإجابتك صحيحة وتم تسجيل نقاطك عالمياً. 🚀", parse_mode="HTML")
                 # ⚡ [إغلاق السؤال] فقط إذا كان وضع السرعة
                 if quiz_g.get('mode') == 'السرعة ⚡':
                     participants = quiz_g.get('participants_ids', []) 
