@@ -2301,7 +2301,7 @@ async def unified_answer_checker(m: types.Message):
 class AdminStates(StatesGroup):
     waiting_for_new_token = State()
     waiting_for_broadcast = State()
-# =========================================
+## =========================================
 #          👑 غرفة عمليات المطور 👑
 # =========================================
 
@@ -2332,11 +2332,11 @@ async def admin_dashboard(message: types.Message):
 
         txt = (
             "👑 <b>غرفة العمليات الرئيسية</b>\n"
-            "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
+            "━━━━━━━━━━━━━━\n"
             f"✅ المجموعات النشطة: <b>{active}</b>\n"
             f"🚫 المجموعات المحظورة: <b>{blocked}</b>\n"
             f"🏆 إجمالي نقاط الهب: <b>{total_global_points}</b>\n"
-            "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
+            "━━━━━━━━━━━━━━\n"
             "👇 اختر قسماً لإدارته:"
         )
         
@@ -2357,10 +2357,10 @@ async def admin_back_to_main(c: types.CallbackQuery, state: FSMContext):
         
         txt = (
             "👑 <b>غرفة العمليات الرئيسية</b>\n"
-            "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
+            "━━━━━━━━━━━━━━\n"
             f"✅ المجموعات النشطة: <b>{active}</b>\n"
             f"🚫 المجموعات المحظورة: <b>{blocked}</b>\n"
-            "❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃"
+            "━━━━━━━━━━━━━━"
         )
         await c.message.edit_text(txt, reply_markup=get_main_admin_kb(), parse_mode="HTML")
     except Exception as e:
@@ -2553,7 +2553,7 @@ async def admin_manage_groups(c: types.CallbackQuery):
         
         txt = (
             "🛠️ <b>إدارة مجموعات الهب الموحد:</b>\n\n"
-            "⏳ = بانتظار موافقتك (Pending)\n"
+            "⏳ = بانتظار الموافقة (Pending)\n"
             "✅ = نشطة وشغالة (Active)\n"
             "🚫 = محظورة (Blocked)\n"
             "━━━━━━━━━━━━━━"
@@ -2561,7 +2561,6 @@ async def admin_manage_groups(c: types.CallbackQuery):
         
         kb = InlineKeyboardMarkup(row_width=1)
         for g in res.data:
-            # تحديد الإيقونة بناءً على الحالة
             status_icon = "⏳" if g['status'] == 'pending' else "✅" if g['status'] == 'active' else "🚫"
             
             kb.add(
@@ -2583,7 +2582,8 @@ async def group_control_options(c: types.CallbackQuery):
     g_id = c.data.split('_')[2]
     res = supabase.table("groups_hub").select("group_name, status").eq("group_id", g_id).execute()
     
-    if not res.data: return await c.answer("⚠️ المجموعة غير موجودة.")
+    if not res.data: 
+        return await c.answer("⚠️ المجموعة غير موجودة.")
     
     g = res.data[0]
     status_map = {'active': 'نشطة ✅', 'pending': 'بانتظار الموافقة ⏳', 'blocked': 'محظورة 🚫'}
@@ -2596,7 +2596,6 @@ async def group_control_options(c: types.CallbackQuery):
     )
 
     kb = InlineKeyboardMarkup(row_width=2)
-    # تظهر الأزرار حسب الحاجة (تفعيل للمنتظر والمحظور، وحظر للنشط والمنتظر)
     if g['status'] != 'active':
         kb.add(InlineKeyboardButton("✅ موافقة وتفعيل", callback_data=f"auth_approve_{g_id}"))
     if g['status'] != 'blocked':
@@ -2604,7 +2603,7 @@ async def group_control_options(c: types.CallbackQuery):
     
     kb.add(InlineKeyboardButton("⬅️ رجوع للقائمة", callback_data="admin_view_pending"))
     await c.message.edit_text(txt, reply_markup=kb, parse_mode="HTML")
-
+    
 # ==========================================
 # 7. معالج العمليات (Admin Callbacks)
 # ==========================================
@@ -2620,75 +2619,25 @@ async def process_auth_callback(c: types.CallbackQuery):
         try:
             full_template = (
                 f"🎉 <b>تم تفعيل القروب بنجاح!</b>\n"
-                f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
+                f"━━━━━━━━━━━━━━\n"
                 f"⚙️ الحالة: متصل (Active) ✅\n"
-                f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
+                f"━━━━━━━━━━━━━━\n\n"
                 f"🚀 <b>دليلك السريع للبدء:</b>\n"
                 f"🔹 <b>تحكم :</b> لوحة الإعدادات ⚙️\n"
                 f"🔹 <b>مسابقة :</b> لبدء التنافس 📝\n"
                 f"🔹 <b>عني :</b> ملفك الشخصي ونقاطك 👤\n"
                 f"🔹 <b>القروبات :</b> الترتيب العالمي 🌍\n\n"
-                f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃"
+                f"━━━━━━━━━━━━━━"
             )
             await bot.send_message(target_id, full_template, parse_mode="HTML")
         except: pass
+
     elif action == "block":
         supabase.table("groups_hub").update({"status": "blocked"}).eq("group_id", target_id).execute()
         await c.answer("تم الحظر بنجاح ❌", show_alert=True)
     
     await c.message.delete()
-    
-    # تحديث القائمة أمام المطور فوراً
     await admin_manage_groups(c)
-# ==========================================
-# --- قبول طلبات المشرفين اداعات
-# ==========================================
-
-@dp.callback_query_handler(lambda c: c.data.startswith('accept_q_'), state="*")
-async def handle_accept_quiz(c: types.CallbackQuery):
-    """معالج الانضمام المتوافق مع جدول quiz_participants الحقيقي"""
-    try:
-        # 1. تفكيك البيانات من الزر
-        data_parts = c.data.split('_')
-        # الترتيب المتوقع في الزر: accept_q_{quiz_id}_{owner_id}
-        if len(data_parts) < 4:
-            return await c.answer("⚠️ بيانات الانضمام ناقصة!")
-
-        quiz_id = data_parts[2]
-        owner_id = data_parts[3]
-        chat_id = str(c.message.chat.id) # حولناه لنص لأن جدولك يتوقع text
-        group_name = c.message.chat.title or "مجموعة"
-
-        # 2. فحص هل المجموعة انضمت سابقاً
-        check = supabase.table("quiz_participants")\
-            .select("*")\
-            .eq("quiz_id", quiz_id)\
-            .eq("chat_id", chat_id)\
-            .execute()
-
-        if check.data and len(check.data) > 0:
-            return await c.answer("✅ مجموعتكم مسجلة بالفعل في هذا البث!", show_alert=True)
-
-        # 3. إدراج البيانات (بناءً على أعمدة جدولك: quiz_id, chat_id, owner_id)
-        supabase.table("quiz_participants").insert({
-            "quiz_id": int(quiz_id),
-            "chat_id": chat_id,
-            "owner_id": str(owner_id)
-        }).execute()
-
-        # 4. إشعار النجاح وتحديث الرسالة
-        await c.answer(f"🌟 كفو! تم انضمام {group_name} للتحدي العالمي!", show_alert=True)
-        
-        try:
-            current_text = c.message.text
-            new_text = f"{current_text}\n\n✅ انضمت الآن: **{group_name}**"
-            await c.message.edit_text(new_text, reply_markup=c.message.reply_markup, parse_mode="Markdown")
-        except:
-            pass
-
-    except Exception as e:
-        logging.error(f"Join Error: {e}")
-        await c.answer(f"🚨 خطأ: {str(e)[:40]}", show_alert=True)
 # ==========================================
 # 5. نهاية الملف: ضمان التشغيل 24/7 (Keep-Alive)
 # ==========================================
@@ -2720,4 +2669,5 @@ if __name__ == '__main__':
     
     # بدء استقبال الرسائل (Polling) مع تخطي التحديثات القديمة
     executor.start_polling(dp, skip_updates=True)
-    
+
+                           
