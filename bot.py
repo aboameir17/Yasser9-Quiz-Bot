@@ -616,7 +616,7 @@ async def activate_group_hub(message: types.Message):
     chat_member = await message.chat.get_member(user_id)
     
     if not (chat_member.is_chat_admin() or user_id == ADMIN_ID):
-        return await message.reply("⚠️ عذراً، هذا الأمر مخصص لمشرفي القروب لطلب التفعيل.")
+        return await message.reply("⚠️ هذا الأمر مخصص لمشرفي القروب فقط.")
 
     group_id = message.chat.id
     group_name = message.chat.title
@@ -627,40 +627,35 @@ async def activate_group_hub(message: types.Message):
         if res.data:
             status = res.data[0]['status']
             if status == 'active':
-                return await message.reply("🛡️ <b>القروب مفعل مسبقاً وجاهز للعمل!</b>", parse_mode="HTML")
+                return await message.reply("🛡️ القروب مفعل مسبقاً وجاهز للعمل!", parse_mode="HTML")
             elif status == 'pending':
-                return await message.reply("⏳ <b>طلبكم قيد المراجعة حالياً!</b>\nيرجى انتظار موافقة المطور.", parse_mode="HTML")
+                return await message.reply("⏳ طلبكم قيد المراجعة، انتظر موافقة المطور.", parse_mode="HTML")
             elif status == 'blocked':
-                return await message.reply("🚫 <b>هذا القروب محظور من قبل المطور.</b>", parse_mode="HTML")
+                return await message.reply("🚫 هذا القروب محظور من قبل المطور.", parse_mode="HTML")
         
+        # إدخال القروب في pending
         supabase.table("groups_hub").insert({
-            "group_id": group_id, "group_name": group_name, "status": "pending",
-            "is_global": True, "group_members_points": {}, "global_users_points": {}, "total_group_score": 0
+            "group_id": group_id,
+            "group_name": group_name,
+            "status": "pending",
+            "total_group_score": 0
         }).execute()
 
-        kb_dev = InlineKeyboardMarkup().add(InlineKeyboardButton("👑 تواصل مع المطور", url="https://t.me/Ya_79k"))
-        await message.reply(
-            f"✅ <b>تم إرسال طلب التفعيل بنجاح!</b>\n"
-            f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
-            f"⚙️ الحالة: بانتظار موافقة المطور ⏳\n"
-            f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
-            f"سيتم إشعاركم هنا فور القبول.", 
-            reply_markup=kb_dev, 
-            parse_mode="HTML"
-        )
-        
+        # إشعار المطور
         kb_fast_action = InlineKeyboardMarkup(row_width=2).add(
             InlineKeyboardButton("✅ موافقة", callback_data=f"auth_approve_{group_id}"),
             InlineKeyboardButton("🚫 رفض وحظر", callback_data=f"auth_block_{group_id}")
         )
         await bot.send_message(ADMIN_ID, 
-            f"🔔 <b>طلب تفعيل جديد بانتظارك!</b>\n"
-            f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
-            f"👥 القروب: <b>{group_name}</b>\n"
-            f"🆔 الآيدي: <code>{group_id}</code>\n"
+            f"🔔 طلب تفعيل جديد!\n"
+            f"👥 القروب: {group_name}\n"
+            f"🆔 {group_id}\n"
             f"اتخذ قرارك الآن:", 
             reply_markup=kb_fast_action, 
             parse_mode="HTML")
+
+        # إشعار القروب
+        await message.reply("✅ تم إرسال طلب التفعيل، انتظر موافقة المطور.", parse_mode="HTML")
 
     except Exception as e:
         logging.error(f"Activation Error: {e}")
@@ -737,36 +732,24 @@ async def handle_control_buttons(c: types.CallbackQuery, state: FSMContext):
         )
 
 # --- معالج أزرار التفعيل (الإصدار الآمن والمضمون) ---
-@dp.callback_query_handler(lambda c: c.data.startswith(('approve_', 'ban_')), user_id=ADMIN_ID)
-async def process_auth_callback(callback_query: types.CallbackQuery):
-    # تقسيم البيانات: الأكشن والآيدي
-    data_parts = callback_query.data.split('_')
-    action = data_parts[0]  # approve أو ban
-    target_id = data_parts[1] # آيدي القروب
-
-    if action == "approve":
-        # تحديث الحالة إلى نشط
-        supabase.table("allowed_groups").update({"status": "active"}).eq("group_id", target_id).execute()
-        
-        await callback_query.answer("تم التفعيل ✅", show_alert=True)
-        await callback_query.message.edit_text(
-            f"{callback_query.message.text}\n\n✅ **تم التفعيل بنجاح بواسطة المطور**", 
-            parse_mode="Markdown"
-        )
-        # إشعار القروب
-        await bot.send_message(target_id, " **مبارك! تم تفعيل القروب.** أرسل كلمة (مسابقة) للبدء.", parse_mode="Markdown")
+@dp.callback_query_handler(lambda c: c.data.startswith(('auth_approve_', 'auth_block_')), user_id=ADMIN_ID)
+async def process_auth_callback(c: types.CallbackQuery):
+    action = c.data.split('_')[1]
+    target_id = int(c.data.split('_')[2])
     
-    elif action == "ban":
-        # تحديث الحالة إلى محظور
-        supabase.table("allowed_groups").update({"status": "blocked"}).eq("group_id", target_id).execute()
+    if action == "approve":
+        supabase.table("groups_hub").update({"status": "active"}).eq("group_id", target_id).execute()
+        await c.answer("تم التفعيل ✅", show_alert=True)
+        await bot.send_message(target_id, "🎉 مبارك! القروب مفعل. أرسل كلمة (مسابقة) للبدء.")
         
-        await callback_query.answer("تم الحظر ❌", show_alert=True)
-        await callback_query.message.edit_text(
-            f"{callback_query.message.text}\n\n❌ **تم رفض الطلب وحظر القروب**", 
-            parse_mode="Markdown"
-        )
-        # إشعار القروب (اختياري)
-        await bot.send_message(target_id, "🚫 **نعتذر، تم رفض طلب تفعيل البوت في هذا القروب.**")
+    elif action == "block":
+        supabase.table("groups_hub").update({"status": "blocked"}).eq("group_id", target_id).execute()
+        await c.answer("تم الحظر ❌", show_alert=True)
+        await bot.send_message(target_id, "🚫 تم رفض طلب التفعيل وحظر القروب.")
+    
+    await c.message.delete()
+    await admin_manage_groups(c)
+    
 # --- [ 2. إدارة الأقسام والأسئلة (النسخة النهائية المصلحة) ] ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('custom_add'), state="*")
