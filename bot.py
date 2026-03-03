@@ -151,10 +151,6 @@ async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
         msg += f"{medal} {player['name']} — {player['points']}\n"
     
     await bot.send_message(chat_id, msg, parse_mode="HTML")
-    
-    # ✅ التعديل الجوهري هنا: أضفنا return ليعود كائن الرسالة للمحرك
-    return await bot.send_message(chat_id, msg, parse_mode="HTML")
-    
 async def send_final_results(chat_id, scores, total_q, is_public=False):
     """
     إصلاح ياسر المطور: عرض العباقرة في كل الحالات مع معالجة الأخطاء
