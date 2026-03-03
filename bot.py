@@ -1203,25 +1203,23 @@ async def quiz_settings_engines(c: types.CallbackQuery, state: FSMContext):
                 InlineKeyboardButton("❌ إلغاء", callback_data=f"final_quiz_settings_{owner_id}")
             )
         )
-# --- 7. استقبال الاسم والحفظ النهائي مع القالب الجديد --- #
-
 @dp.message_handler(state=Form.waiting_for_quiz_name)
 async def process_quiz_name_final(message: types.Message, state: FSMContext):
     quiz_name = message.text.strip()
     data = await state.get_data()
     
-    # 1. تجهيز الأقسام كقائمة نصوص نظيفة
+    # 1️⃣ تجهيز الأقسام
     selected_cats = data.get('selected_cats', [])
-    clean_list = [str(c) for c in selected_cats]
+    clean_list = [str(c) for c in selected_cats] if selected_cats else None
 
-    # 2. الحصول على آيدي المستخدم
+    # 2️⃣ الحصول على آيدي المستخدم
     u_id = str(message.from_user.id)
 
-    # 3. تحديد النطاق (scope) والقيم الافتراضية
+    # 3️⃣ تحديد النطاق وis_public
     quiz_scope = data.get('quiz_scope', 'local')  # 'local' أو 'global'
-    quiz_type = 'public' if quiz_scope == 'global' else 'private'
+    is_public = True if quiz_scope == 'global' else False
 
-    # 4. بناء الـ Payload
+    # 4️⃣ بناء Payload وفق جدول saved_quizzes
     payload = {
         "created_by": u_id,
         "quiz_name": quiz_name,
@@ -1233,34 +1231,29 @@ async def process_quiz_name_final(message: types.Message, state: FSMContext):
         "smart_hint": bool(data.get('quiz_smart_bool', False)),
         "is_bot_quiz": bool(data.get('is_bot_quiz', False)),
         "cats": clean_list,
-        "quiz_type": quiz_type,
+        "is_public": is_public,
         "scope": quiz_scope
     }
 
     try:
-        # تنفيذ الحفظ في سوبابيس
         supabase.table("saved_quizzes").insert(payload).execute()
         
-        # --- قالب رسالة النجاح ---
-        scope_emoji = "🌐" if quiz_scope == 'global' else "📍"
-        scope_text = "إذاعة عامة" if quiz_scope == 'global' else "مسابقة داخلية"
-        
+        # 5️⃣ رسالة النجاح
+        scope_emoji = "🌐" if is_public else "📍"
+        scope_text = "إذاعة عامة" if is_public else "مسابقة داخلية"
         success_msg = (
             f"✅ **تم حفظ المسابقة بنجاح!**\n"
-            f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
             f"🏷 الاسم: `{quiz_name}`\n"
             f"⏱ الوقت: `{payload['time_limit']} ثانية`\n"
             f"📊 الأقسام: `{len(selected_cats)}` قسم\n"
-            f"{scope_emoji} النطاق: **{scope_text}**\n"
-            f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
+            f"{scope_emoji} النطاق: **{scope_text}**\n\n"
             f"🚀 اكتب كلمة مسابقة وستجدها الآن في 'قائمة مسابقاتك'!"
         )
-        
         await message.answer(success_msg)
         await state.finish()
-        
+
     except Exception as e:
-        await message.answer(f"❌ خطأ في الحفظ: `{str(e)[:50]}`")
+        await message.answer(f"❌ خطأ في الحفظ: `{str(e)[:100]}`")
         
 # ==========================================
 # [1] عرض قائمة المسابقات (نسخة ياسر المصفاة)
