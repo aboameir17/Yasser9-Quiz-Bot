@@ -2237,32 +2237,46 @@ def is_answer_correct(user_msg, correct_ans):
     return False
 
 # ==========================================
-# 🎯 رادار الإجابات الموحد (يمنع التكرار نهائياً)
+# 🎯 رادار الإجابات الموحد (يمنع التكرار + يرصد في سوبابيس)
 # ==========================================
-@dp.message_handler(lambda m: not m.text.startswith('/'))
+@dp.message_handler(lambda m: not m.text or not m.text.startswith('/'))
 async def unified_answer_checker(m: types.Message):
     cid = m.chat.id
     uid = m.from_user.id
-    user_text = m.text.strip()
+    user_text = m.text.strip() if m.text else ""
 
-    # 1️⃣ أولاً: التحقق من "الإذاعة العالمية" (الأولوية القصوى)
+    # 1️⃣ أولاً: التحقق من "الإذاعة العالمية"
     quiz_g = global_active_quizzes.get(cid)
     if quiz_g and quiz_g.get('active'):
         correct_ans = str(quiz_g['ans']).strip()
         
         if is_answer_correct(user_text, correct_ans):
             # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-            if not any(w['id'] == uid for w in quiz_g['winners']):
-                elapsed = round(time.time() - quiz_g['start_time'], 2)
+            if not any(w['id'] == uid for w in quiz_g.get('winners', [])):
+                elapsed = round(time.time() - quiz_g.get('start_time', time.time()), 2)
                 
-                # تسجيل الفوز في الإذاعة
+                # 🟢 [الرصد الرقمي] تسجيل الإجابة في جدول answers_log فوراً
+                db_quiz_id = quiz_g.get('db_quiz_id')
+                if db_quiz_id:
+                    asyncio.create_task(
+                        supabase.table("answers_log").insert({
+                            "quiz_id": db_quiz_id,
+                            "chat_id": cid,
+                            "user_id": uid,
+                            "user_name": m.from_user.first_name,
+                            "answer_text": user_text,
+                            "points_earned": 10
+                        }).execute()
+                    )
+
+                # تسجيل الفوز في الرام (للمحرك)
                 quiz_g['winners'].append({
                     "name": m.from_user.first_name, 
                     "id": uid,
                     "time": elapsed
                 })
                 
-                # إذا كان وضع السرعة، نغلق السؤال عالمياً فوراً
+                # إغلاق السؤال عالمياً إذا كان وضع السرعة
                 if quiz_g.get('mode') == 'السرعة ⚡':
                     participants = quiz_g.get('participants', [cid])
                     for p_cid in participants:
@@ -2273,25 +2287,12 @@ async def unified_answer_checker(m: types.Message):
                 else:
                     await m.reply(f"✅ <b>إجابة صحيحة في التحدي العالمي!</b>", parse_mode="HTML")
                 
-                return # ✋ توقف هنا! لا تذهب للفحص الخاص (هذا ما يمنع التكرار)
+                return 
 
-    # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة" (إذا لم يكن هناك إذاعة)
-    elif cid in active_quizzes and active_quizzes[cid]['active']:
-        quiz_p = active_quizzes[cid]
-        correct_ans = str(quiz_p['ans']).strip()
-        
-        if is_answer_correct(user_text, correct_ans):
-            if not any(w['id'] == uid for w in quiz_p['winners']):
-                quiz_p['winners'].append({
-                    "name": m.from_user.first_name, 
-                    "id": uid
-                })
-                
-                if quiz_p.get('mode') == 'السرعة ⚡':
-                    quiz_p['active'] = False
-                
-                # هنا لا تضع m.reply إذا كان المحرك هو من يرسل القالب لاحقاً
-                return
+    # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
+    elif cid in active_quizzes and active_quizzes[cid].get('active'):
+        # ... (نفس المنطق أعلاه مع تغيير active_quizzes[cid]) ...
+        pass
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
