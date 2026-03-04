@@ -2252,50 +2252,43 @@ async def unified_answer_checker(m: types.Message):
     user_text = m.text.strip() if m.text else ""
 
     # 1️⃣ أولاً: التحقق من "الإذاعة العالمية"
-    quiz_g = active_quizzes.get(cid)
-    if quiz_g and quiz_g.get('active'):
-        correct_ans = str(quiz_g['ans']).strip()
+    if cid in active_quizzes and active_quizzes[cid].get('active'):
+        # هنا السر: نستخدم المرجع المباشر للقاموس
+        correct_ans = str(active_quizzes[cid]['ans']).strip()
         
         if is_answer_correct(user_text, correct_ans):
-            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-            if not any(w['id'] == uid for w in quiz_g.get('winners', [])):
-                elapsed = round(time.time() - quiz_g.get('start_time', time.time()), 2)
+            # التأكد أن المستخدم لم يفز مسبقاً
+            if not any(w['id'] == uid for w in active_quizzes[cid].get('winners', [])):
                 
-                # 🟢 [الرصد الرقمي] تسجيل الإجابة في جدول answers_log فوراً
-                db_quiz_id = quiz_g.get('db_quiz_id')
-                if db_quiz_id:
-                    # نستخدم to_thread لتشغيل الدالة التزامنية في خلفية البوت دون تعطيله
-                    def save_to_supabase():
+                # 🛑 [أمر الإغلاق الفوري] - أهم سطر للسرعة
+                if active_quizzes[cid].get('mode') == 'السرعة ⚡':
+                    p_ids = active_quizzes[cid].get('participants_ids', [cid])
+                    for p_cid in p_ids:
+                        if p_cid in active_quizzes:
+                            active_quizzes[p_cid]['active'] = False # إغلاق الأصل وليس النسخة
+                    logging.info("⚡ تم إغلاق السؤال عالمياً")
+
+                # الآن كمل باقي المهام (سوبابيس والرد)
+                db_id = active_quizzes[cid].get('db_quiz_id')
+                if db_id:
+                    def save():
                         try:
                             supabase.table("answers_log").insert({
-                                "quiz_id": db_quiz_id,
-                                "question_no": quiz_g.get('current_index', 1),
-                                "chat_id": cid,
-                                "user_id": uid,
-                                "user_name": m.from_user.first_name,
-                                "answer_text": user_text,
-                                "points_earned": 10
+                                "quiz_id": db_id,
+                                "question_no": active_quizzes[cid].get('current_index', 1),
+                                "chat_id": cid, "user_id": uid, "user_name": m.from_user.first_name,
+                                "answer_text": user_text, "points_earned": 10
                             }).execute()
-                        except Exception as e:
-                            logging.error(f"❌ خطأ سوبابيس: {e}")
+                        except Exception as e: logging.error(f"❌ سوبابيس: {e}")
+                    asyncio.create_task(asyncio.to_thread(save))
 
-                    # تشغيل عملية الحفظ في الخلفية
-                    asyncio.create_task(asyncio.to_thread(save_to_supabase))
+                # تسجيل الفائز في الرام
+                active_quizzes[cid]['winners'].append({"name": m.from_user.first_name, "id": uid})
 
-                # 🔵 [إعلان الفوز] - الآن سيعمل هذا السطر فوراً
+                # 🔵 [إعلان الفوز]
                 await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nإجابتك صحيحة وتم تسجيل نقاطك عالمياً. 🚀", parse_mode="HTML")    
                 
-
-                # ⚡ [إغلاق السؤال] فقط إذا كان وضع السرعة
-                if quiz_g.get('mode') == 'السرعة ⚡':
-                    participants = quiz_g.get('participants_ids', []) 
-                    if not participants: participants = [cid]
-                    for p_cid in participants:
-                        if p_cid in active_quizzes:
-                            active_quizzes[p_cid]['active'] = False
-                
-                return 
-
+                return
     # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
     elif cid in active_quizzes and active_quizzes[cid].get('active'):
         quiz_p = active_quizzes[cid]
