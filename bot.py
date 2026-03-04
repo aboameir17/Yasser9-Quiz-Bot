@@ -2090,12 +2090,12 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             for cid in all_chats:
                 active_quizzes[cid] = {
                     "active": True,
-                    "ans": correct_ans,
+                    "ans": ans, # تم التصحيح من correct_ans إلى ans
                     "winners": [],
-                    "mode": quiz_data['mode'],
-                    "db_quiz_id": quiz_data.get('id'),
+                    "mode": quiz_data.get('mode', 'السرعة ⚡'),
+                    "db_quiz_id": current_quiz_db_id, # تمرير رقم المسابقة من سوبابيس
                     "current_index": i + 1,
-                    "participants_ids": all_chats  # 👈 هذا هو السطر السحري الذي كان ناقصاً!
+                    "participants_ids": all_chats # القائمة المحلية للسرعة القصوى
                 }
 
             # 4️⃣ بث السؤال (يجب أن يكون تحت الـ for بـ 12 مسافة)
