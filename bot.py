@@ -2093,15 +2093,20 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
                         "current_index": i + 1
                     }).eq("id", current_quiz_db_id).execute()
                 except: pass
-       # داخل دالة engine_global_broadcast -> حلقة الأسئلة
-                for cid in all_chats:
+                
+            
+            # داخل دالة engine_global_broadcast -> حلقة الأسئلة
+            for cid in all_chats:
                 active_quizzes[cid] = {
                     "active": True,
-                    "ans": ans, 
+                    "ans": ans,  # استخدمنا ans ليتطابق مع المتغير فوق
+                    "winners": [],
                     "mode": quiz_data.get('mode', 'السرعة ⚡'),
-                    "db_quiz_id": current_quiz_db_id,  # 👈 تأكد أنك تستخدم المتغير الجديد هنا
-                    "participants_ids": all_chats
+                    "db_quiz_id": current_quiz_db_id, # نستخدم المعرف المرر للدالة
+                    "current_index": i + 1,
+                    "participants_ids": all_chats  # الحبل السري الذي يربط القروبات
                 }
+
  
             # 4️⃣ بث السؤال (يجب أن يكون تحت الـ for بـ 12 مسافة)
             send_tasks = [
