@@ -2094,18 +2094,20 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                 if isinstance(m, types.Message):
                     messages_to_delete[all_chats[idx]].append(m.message_id)
 
-            # 5️⃣ محرك الانتظار الذكي (يجب أن يظل داخل الـ for)
+            # 5️⃣ محرك الانتظار الذكي (نظام الحساس العالمي)
             t_limit = int(quiz_data.get('time_limit', 15))
             start_wait = time.time()
-            while time.time() - start_wait < t_limit:
-                still_active = False
-                for cid in all_chats:
-                    if active_quizzes.get(cid, {}).get('active', False):
-                        still_active = True
-                        break
-                if not still_active: break
-                await asyncio.sleep(0.5)
 
+            while time.time() - start_wait < t_limit:
+                # فحص الحالة: هل لا يزال هناك أي مجموعة "نشطة"؟
+                # استخدمنا 'all' أو 'any' للتأكد من حالة الجميع
+                still_active = any(active_quizzes.get(c, {}).get('active', False) for c in all_chats)
+                
+                if not still_active:
+                    logging.info("⚡ تم كسر الانتظار: الرادار أغلق جميع المجموعات")
+                    break
+                
+                await asyncio.sleep(0.4) # فحص سريع كل 0.4 ثانية
             # 6️⃣ إغلاق السؤال وتحديث النقاط (يجب أن يظل داخل الـ for)
             res_tasks = []
             for cid in all_chats:
