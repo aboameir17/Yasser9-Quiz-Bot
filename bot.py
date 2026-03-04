@@ -2012,10 +2012,9 @@ async def run_countdown(chat_id):
         except: pass
     except: pass
 
-# 3️⃣ المحرك الرئيسي الموحد
 # 3️⃣ المحرك الرئيسي الموحد (نسخة ياسر المطورة 2026)
-async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
-    # --- [ أ ] تصفية المجموعات ومنع التكرار الجذري ---
+# ✅ السطر الجديد (أضف المتغير الرابع):
+async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_db_id=None):
     input_ids = chat_ids if isinstance(chat_ids, list) else [chat_ids]
     all_chats = list(set(input_ids))
 
@@ -2094,19 +2093,16 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                         "current_index": i + 1
                     }).eq("id", current_quiz_db_id).execute()
                 except: pass
-
        # داخل دالة engine_global_broadcast -> حلقة الأسئلة
-            for cid in all_chats:
+                for cid in all_chats:
                 active_quizzes[cid] = {
                     "active": True,
-                    "ans": ans, # تم التصحيح من correct_ans إلى ans
-                    "winners": [],
+                    "ans": ans, 
                     "mode": quiz_data.get('mode', 'السرعة ⚡'),
-                    "db_quiz_id": current_quiz_db_id, # تمرير رقم المسابقة من سوبابيس
-                    "current_index": i + 1,
-                    "participants_ids": all_chats # القائمة المحلية للسرعة القصوى
+                    "db_quiz_id": current_quiz_db_id,  # 👈 تأكد أنك تستخدم المتغير الجديد هنا
+                    "participants_ids": all_chats
                 }
-
+ 
             # 4️⃣ بث السؤال (يجب أن يكون تحت الـ for بـ 12 مسافة)
             send_tasks = [
                 send_quiz_question(cid, q, i+1, total_q, {
