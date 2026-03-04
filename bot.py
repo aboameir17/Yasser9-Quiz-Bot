@@ -529,9 +529,10 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
         
         if final_groups:
             try:
-                # أ. إنشاء سجل المسابقة - أضفت فحصاً للتأكد من نجاح الإدخال
+                # أ. إنشاء سجل المسابقة - (أضفنا created_by هنا ليرضى سوبابيس)
                 active_res = supabase.table("active_quizzes").insert({
                     "quiz_name": quiz_name,
+                    "created_by": owner_id, # 👈 هذا هو السطر الناقص الذي تسبب في المشكلة
                     "is_global": True,
                     "is_active": True,
                     "total_questions": q_count,
@@ -544,16 +545,12 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
                 new_quiz_db_id = active_res.data[0]['id']
                 logging.info(f"✅ تم إنشاء المسابقة بنجاح ID: {new_quiz_db_id}")
 
-                # ب. ربط المجموعات - هنا "الحبل السري"
+                # ب. ربط المجموعات - "الحبل السري"
                 participant_data = [{"quiz_id": new_quiz_db_id, "chat_id": cid} for cid in final_groups]
-                p_res = supabase.table("quiz_participants").insert(participant_data).execute()
-                
-                if p_res.data:
-                    logging.info(f"🔗 تم تسجيل {len(final_groups)} مجموعة في جدول المشاركين")
-                else:
-                    logging.warning("⚠️ تم إنشاء المسابقة ولكن فشل تسجيل المشاركين في الجدول")
+                supabase.table("quiz_participants").insert(participant_data).execute()
+                logging.info(f"🔗 تم تسجيل {len(final_groups)} مجموعة في جدول المشاركين")
 
-                # ج. تشغيل المحرك (تأكد أن المحرك يستقبل المتغير الرابع)
+                # ج. تشغيل المحرك
                 await engine_global_broadcast(final_groups, q, "الإذاعة العالمية 🌐", new_quiz_db_id)
 
             except Exception as db_err:
