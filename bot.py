@@ -2052,28 +2052,31 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             logging.error(f"❌ خطأ سوبابيس (بدء المسابقة): {e}")
 
         # --- [ د ] دورة البث الموحدة ---
-        for i, q in enumerate(selected_questions):
-            ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
-            cat_name = q.get('category') or "عام"
+            for i, q in enumerate(selected_questions):
+                ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
+                cat_name = q.get('category') or "عام"
 
-            # 🔵 [الخطوة 2] تحديث الإجابة الحالية في السجل الرقمي مع كل سؤال
-            if current_quiz_db_id:
-                try:
-                    supabase.table("active_quizzes").update({
-                        "current_answer": ans,
-                        "current_index": i + 1
-                    }).eq("id", current_quiz_db_id).execute()
-                except: pass
+                # 🔵 [الخطوة 2] تحديث الإجابة في سوبابيس (للرصد الخارجي)
+                if current_quiz_db_id:
+                    try:
+                        supabase.table("active_quizzes").update({
+                            "current_answer": ans,
+                            "current_index": i + 1
+                        }).eq("id", current_quiz_db_id).execute()
+                    except: pass
 
-            for cid in all_chats:
-                active_quizzes[cid] = {
-                    "active": True,
-                    "ans": ans,
-                    "winners": [],
-                    "mode": quiz_data.get('mode', 'السرعة ⚡'),
-                    "start_time": time.time(),
-                    "db_quiz_id": current_quiz_db_id  # للرصد لاحقاً
-                }
+                # 🚀 [التعديل الجوهري] - ربط المجموعات ببعضها
+                for cid in all_chats:
+                    active_quizzes[cid] = {
+                        "active": True,
+                        "ans": ans,
+                        "winners": [],
+                        "mode": quiz_data.get('mode', 'السرعة ⚡'),
+                        "start_time": time.time(),
+                        "db_quiz_id": current_quiz_db_id,
+                        "current_index": i + 1,
+                        "participants_ids": all_chats  # 👈 هذا السطر هو "الحبل" الذي يربط القروبات
+                    }
 
             # 4️⃣ بث السؤال (إذاعة عالمية 🌐)
             send_tasks = [
