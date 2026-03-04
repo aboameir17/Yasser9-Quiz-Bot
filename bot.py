@@ -2047,7 +2047,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
         group_scores = {cid: {} for cid in all_chats}
         messages_to_delete = {cid: [] for cid in all_chats}
 
-        # 🟢 [الخطوة 1] فتح سجل للمسابقة في سوبابيس (active_quizzes)
+        # 🟢 [الخطوة 1] فتح سجل للمسابقة في سوبابيس 
         current_quiz_db_id = None
         try:
             quiz_entry = supabase.table("active_quizzes").insert({
@@ -2062,6 +2062,13 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             if quiz_entry.data:
                 current_quiz_db_id = quiz_entry.data[0]['id']
                 logging.info(f"✅ تم بدء السجل الرقمي بنجاح ID: {current_quiz_db_id}")
+
+                # 🔥 [ الإضافة الجديدة هنا ] 🔥
+                # تسجيل المجموعات رسمياً في جدول المشاركين للربط العالمي
+                participants_records = [{"quiz_id": current_quiz_db_id, "chat_id": cid} for cid in all_chats]
+                supabase.table("quiz_participants").insert(participants_records).execute()
+                logging.info(f"🔗 تم ربط {len(all_chats)} مجموعة بجدول المشاركين")
+
         except Exception as e:
             logging.error(f"❌ خطأ سوبابيس (بدء المسابقة): {e}")
 
