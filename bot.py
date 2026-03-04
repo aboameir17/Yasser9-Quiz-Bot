@@ -467,26 +467,24 @@ async def get_group_status(chat_id):
 
 async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id: int):
     try:
-        # 1. جلب بيانات المسابقة
+        # 1. جلب بيانات المسابقة الأصلية
         res_q = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
         q = res_q.data
         if not q: return await c.answer("❌ تعذر جلب بيانات المسابقة")
 
-        # 2. جلب المجموعات
+        # 2. جلب المجموعات النشطة حالياً
         groups_res = supabase.table("groups_hub").select("group_id").eq("status", "active").execute()
         if not groups_res.data: return await c.answer("⚠️ لا توجد مجموعات!")
 
         all_chats = [g['group_id'] for g in groups_res.data]
-        cancelled_groups.clear() # تصفية القائمة قبل كل إذاعة
+        cancelled_groups.clear() 
 
-        # 3. تجهيز بيانات القالب (المجلد، القسم، النوع)
         quiz_name = q.get('quiz_name', 'تحدي جديد')
         q_count = q.get('questions_count', 10)
         q_mode = q.get('mode', 'السرعة ⚡')
-        # نفترض أن q['cats'] تحتوي على اسم القسم أو المجلد
         cat_info = q.get('category_name', 'عام') 
 
-        # 4. إرسال الرسالة الأولى وتخزين المعرفات
+        # 4. إرسال رسالة التحضير
         group_msgs = {}
         kb = InlineKeyboardMarkup().add(InlineKeyboardButton("🚫 إلغاء المسابقة في مجموعتنا", callback_data=f"cancel_quiz_{quiz_id}"))
 
@@ -496,16 +494,16 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
                 group_msgs[cid] = msg.message_id
             except: continue
 
-        # 5. دورة العد التنازلي (30 رقم، كل رقم ثانيتين)
-        # إيموجيات الأرقام من 30 إلى 1
+        # 5. دورة العد التنازلي (30 ثانية)
         timer_emojis = ["3️⃣0️⃣", "2️⃣9️⃣", "2️⃣8️⃣", "2️⃣7️⃣", "2️⃣6️⃣", "2️⃣5️⃣", "2️⃣4️⃣", "2️⃣3️⃣", "2️⃣2️⃣", "2️⃣1️⃣", 
                         "2️⃣0️⃣", "1️⃣9️⃣", "1️⃣8️⃣", "1️⃣7️⃣", "1️⃣6️⃣", "1️⃣5️⃣", "1️⃣4️⃣", "1️⃣3️⃣", "1️⃣2️⃣", "1️⃣1️⃣", 
                         "1️⃣0️⃣", "9️⃣", "8️⃣", "7️⃣", "6️⃣", "5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣"]
 
         for emoji in timer_emojis:
-            # القالب الملكي المحدث
             text = (
                 f"📢 **إعلان: مسابقة عالمية منطلقة الآن!** 🌐\n"
+                f"━━━━━━━━━━━━━━\n"
+                f"⏰ {emoji} ™️\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"🏆 المسابقة: **{quiz_name}**\n"
                 f"📂 القسم: **{cat_info}**\n"
@@ -514,32 +512,49 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
                 f"👤 المنظم: **{c.from_user.first_name}**\n"
                 f"━━━━━━━━━━━━━━\n"
                 f"⏳ ستبدأ المسابقة بعد انتهاء العد التنازلي:\n"
-                f"🔥 {emoji} 🔥\n"
-                f"━━━━━━━━━━━━━━\n"
                 f"👈 إن كنت لا تريد المشاركة اضغط إلغاء أدناه."
             )
 
             edit_tasks = []
             for cid, mid in group_msgs.items():
-                if cid not in cancelled_groups: # تعديل فقط للمجموعات التي لم تلغِ
+                if cid not in cancelled_groups:
                     edit_tasks.append(bot.edit_message_text(text, cid, mid, reply_markup=kb, parse_mode="Markdown"))
             
             await asyncio.gather(*edit_tasks, return_exceptions=True)
-            await asyncio.sleep(2) # ثانيتين لكل رقم كما طلبت
+            await asyncio.sleep(2) 
 
-        # 6. التصفية النهائية (حذف من ضغط إلغاء) والانطلاق
+        # 🚀 [ الخطوة الجوهرية الجديدة ] 🚀
+        # 6. التصفية النهائية وتسجيل البيانات "عالمياً" في سوبابيس قبل الانطلاق
         final_groups = [cid for cid in group_msgs if cid not in cancelled_groups]
         
         if final_groups:
-            await engine_global_broadcast(final_groups, q, "الإذاعة العالمية 🌐")
+            # أ. إنشاء سجل المسابقة النشطة في جدول active_quizzes
+            active_res = supabase.table("active_quizzes").insert({
+                "quiz_name": quiz_name,
+                "is_global": True,
+                "is_active": True,
+                "total_questions": q_count,
+                "participants_ids": final_groups # حفظ القائمة كـ JSON للتوثيق
+            }).execute()
+            
+            new_quiz_db_id = active_res.data[0]['id']
+
+            # ب. ربط المجموعات ببعضها في جدول quiz_participants (الحبل السري)
+            # هذا الجدول هو ما سيعتمد عليه "الرادار" لإغلاق المجموعات الأخرى
+            participant_data = [{"quiz_id": new_quiz_db_id, "chat_id": cid} for cid in final_groups]
+            supabase.table("quiz_participants").insert(participant_data).execute()
+
+            # ج. تشغيل المحرك مع تمرير ID المسابقة الجديد
+            await engine_global_broadcast(final_groups, q, "الإذاعة العالمية 🌐", new_quiz_db_id)
         
-        # تنظيف الرسائل القديمة
+        # تنظيف الرسائل
         for cid, mid in group_msgs.items():
             try: await bot.delete_message(cid, mid)
             except: pass
 
     except Exception as e:
         logging.error(f"🚨 Broadcast Error: {e}")
+        
 # 4. حالات النظام (FSM States)
 # ==========================================
 class Form(StatesGroup):
