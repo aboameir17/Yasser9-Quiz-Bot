@@ -2256,15 +2256,14 @@ async def unified_answer_checker(m: types.Message):
             # التأكد أن المستخدم لم يفز مسبقاً
             if not any(w['id'] == uid for w in active_quizzes[cid].get('winners', [])):
                 
-                # 🛑 [أمر الإغلاق الفوري] - الرادار ينفذ الأمر عالمياً
+                # 🛑 [أمر الإغلاق الفوري] - الرادار ينفذ الإعدام العالمي 
                 if active_quizzes[cid].get('mode') == 'السرعة ⚡':
-                    # تأكد أن هذا المفتاح 'participants_ids' هو نفسه الموجود في المحرك
-                    p_ids = active_quizzes[cid].get('participants_ids', [cid])
+                    p_ids = active_quizzes[cid].get('participants_ids', [])
                     for p_cid in p_ids:
                         if p_cid in active_quizzes:
-                            active_quizzes[p_cid]['active'] = False # الإغلاق الحقيقي
-                    logging.info("⚡ تم إغلاق السؤال عالمياً بنجاح")
-
+                            active_quizzes[p_cid]['active'] = False
+            
+                    logging.info(f"⚡ تم إنهاء السؤال في {len(p_ids)} مجموعة بنجاح!")
                 # الآن كمل باقي المهام (سوبابيس والرد)
                 db_id = active_quizzes[cid].get('db_quiz_id')
                 if db_id:
