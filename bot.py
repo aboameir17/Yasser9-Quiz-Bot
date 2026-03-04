@@ -523,38 +523,50 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
             await asyncio.gather(*edit_tasks, return_exceptions=True)
             await asyncio.sleep(2) 
 
-        # 🚀 [ الخطوة الجوهرية الجديدة ] 🚀
-        # 6. التصفية النهائية وتسجيل البيانات "عالمياً" في سوبابيس قبل الانطلاق
+        # 🚀 [ الخطوة الجوهرية المعدلة ] 🚀
+        # 6. التصفية النهائية وتسجيل البيانات
         final_groups = [cid for cid in group_msgs if cid not in cancelled_groups]
         
         if final_groups:
-            # أ. إنشاء سجل المسابقة النشطة في جدول active_quizzes
-            active_res = supabase.table("active_quizzes").insert({
-                "quiz_name": quiz_name,
-                "is_global": True,
-                "is_active": True,
-                "total_questions": q_count,
-                "participants_ids": final_groups # حفظ القائمة كـ JSON للتوثيق
-            }).execute()
-            
-            new_quiz_db_id = active_res.data[0]['id']
+            try:
+                # أ. إنشاء سجل المسابقة - أضفت فحصاً للتأكد من نجاح الإدخال
+                active_res = supabase.table("active_quizzes").insert({
+                    "quiz_name": quiz_name,
+                    "is_global": True,
+                    "is_active": True,
+                    "total_questions": q_count,
+                    "participants_ids": final_groups 
+                }).execute()
+                
+                if not active_res.data:
+                    raise Exception("فشل إنشاء سجل المسابقة في active_quizzes")
 
-            # ب. ربط المجموعات ببعضها في جدول quiz_participants (الحبل السري)
-            # هذا الجدول هو ما سيعتمد عليه "الرادار" لإغلاق المجموعات الأخرى
-            participant_data = [{"quiz_id": new_quiz_db_id, "chat_id": cid} for cid in final_groups]
-            supabase.table("quiz_participants").insert(participant_data).execute()
+                new_quiz_db_id = active_res.data[0]['id']
+                logging.info(f"✅ تم إنشاء المسابقة بنجاح ID: {new_quiz_db_id}")
 
-            # ج. تشغيل المحرك مع تمرير ID المسابقة الجديد
-            await engine_global_broadcast(final_groups, q, "الإذاعة العالمية 🌐", new_quiz_db_id)
+                # ب. ربط المجموعات - هنا "الحبل السري"
+                participant_data = [{"quiz_id": new_quiz_db_id, "chat_id": cid} for cid in final_groups]
+                p_res = supabase.table("quiz_participants").insert(participant_data).execute()
+                
+                if p_res.data:
+                    logging.info(f"🔗 تم تسجيل {len(final_groups)} مجموعة في جدول المشاركين")
+                else:
+                    logging.warning("⚠️ تم إنشاء المسابقة ولكن فشل تسجيل المشاركين في الجدول")
+
+                # ج. تشغيل المحرك (تأكد أن المحرك يستقبل المتغير الرابع)
+                await engine_global_broadcast(final_groups, q, "الإذاعة العالمية 🌐", new_quiz_db_id)
+
+            except Exception as db_err:
+                logging.error(f"❌ خطأ في التعامل مع قاعدة البيانات: {db_err}")
+                await bot.send_message(owner_id, f"🚨 حدث خطأ أثناء بدء المسابقة: {db_err}")
         
-        # تنظيف الرسائل
+        # 7. تنظيف الرسائل (هذا الجزء لن يعمل إذا حدث خطأ أعلاه، لذا وضعناه هنا)
         for cid, mid in group_msgs.items():
             try: await bot.delete_message(cid, mid)
             except: pass
 
     except Exception as e:
-        logging.error(f"🚨 Broadcast Error: {e}")
-        
+        logging.error(f"🚨 General Broadcast Error: {e}")
 # 4. حالات النظام (FSM States)
 # ==========================================
 class Form(StatesGroup):
