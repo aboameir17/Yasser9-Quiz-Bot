@@ -2064,17 +2064,16 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     }).eq("id", current_quiz_db_id).execute()
                 except: pass
 
-       # تجهيز الرام لكل المجموعات (قبل بث السؤال)
+       # داخل دالة engine_global_broadcast -> حلقة الأسئلة
             for cid in all_chats:
                 active_quizzes[cid] = {
                     "active": True,
-                    "ans": ans,
+                    "ans": correct_ans,
                     "winners": [],
-                    "wrong_answers": [],
-                    "participants": all_chats, # استخدمنا الاسم القديم للربط الفعال
-                    "mode": quiz_data.get('mode', 'السرعة ⚡'),
-                    "start_time": time.time(),
-                    "db_quiz_id": current_quiz_db_id
+                    "mode": quiz_data['mode'],
+                    "db_quiz_id": quiz_data.get('id'),
+                    "current_index": i + 1,
+                    "participants_ids": all_chats  # 👈 هذا هو السطر السحري الذي كان ناقصاً!
                 }
 
             # 4️⃣ بث السؤال (يجب أن يكون تحت الـ for بـ 12 مسافة)
