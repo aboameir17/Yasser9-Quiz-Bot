@@ -1875,7 +1875,6 @@ async def delete_after(message, delay):
         await message.delete()
     except Exception: 
         pass
-
 # ==========================================
 # [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
@@ -2052,33 +2051,33 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
             logging.error(f"❌ خطأ سوبابيس (بدء المسابقة): {e}")
 
         # --- [ د ] دورة البث الموحدة ---
-            for i, q in enumerate(selected_questions):
-                ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
-                cat_name = q.get('category') or "عام"
+        for i, q in enumerate(selected_questions):
+            ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
+            cat_name = q.get('category') or "عام"
 
-                # 🔵 [الخطوة 2] تحديث الإجابة في سوبابيس (للرصد الخارجي)
-                if current_quiz_db_id:
-                    try:
-                        supabase.table("active_quizzes").update({
-                            "current_answer": ans,
-                            "current_index": i + 1
-                        }).eq("id", current_quiz_db_id).execute()
-                    except: pass
+            # 🔵 [الخطوة 2] تحديث سوبابيس
+            if current_quiz_db_id:
+                try:
+                    supabase.table("active_quizzes").update({
+                        "current_answer": ans,
+                        "current_index": i + 1
+                    }).eq("id", current_quiz_db_id).execute()
+                except: pass
 
-                # 🚀 [التعديل الجوهري] - ربط المجموعات ببعضها
-                for cid in all_chats:
-                    active_quizzes[cid] = {
-                        "active": True,
-                        "ans": ans,
-                        "winners": [],
-                        "mode": quiz_data.get('mode', 'السرعة ⚡'),
-                        "start_time": time.time(),
-                        "db_quiz_id": current_quiz_db_id,
-                        "current_index": i + 1,
-                        "participants_ids": all_chats  # 👈 هذا السطر هو "الحبل" الذي يربط القروبات
-                    }
+            # 🚀 [التعديل الجوهري] - تجهيز الرام
+            for cid in all_chats:
+                active_quizzes[cid] = {
+                    "active": True,
+                    "ans": ans,
+                    "winners": [],
+                    "mode": quiz_data.get('mode', 'السرعة ⚡'),
+                    "start_time": time.time(),
+                    "db_quiz_id": current_quiz_db_id,
+                    "current_index": i + 1,
+                    "participants_ids": all_chats 
+                }
 
-            # 4️⃣ بث السؤال (إذاعة عالمية 🌐)
+            # 4️⃣ بث السؤال (يجب أن يكون تحت الـ for بـ 12 مسافة)
             send_tasks = [
                 send_quiz_question(cid, q, i+1, total_q, {
                     'owner_name': owner_name,
@@ -2095,26 +2094,19 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                 if isinstance(m, types.Message):
                     messages_to_delete[all_chats[idx]].append(m.message_id)
 
-            # 5️⃣ محرك الانتظار الذكي (نظام الحساس العالمي)
+            # 5️⃣ محرك الانتظار الذكي (يجب أن يظل داخل الـ for)
             t_limit = int(quiz_data.get('time_limit', 15))
             start_wait = time.time()
-
             while time.time() - start_wait < t_limit:
-                # الفكرة: لو أي مجموعة لسه "نشطة" (لم يجاوب أحد)، كمل انتظار.
-                # لو كل المجموعات صارت False (بسبب الرادار)، اكسر الانتظار فوراً.
                 still_active = False
                 for cid in all_chats:
                     if active_quizzes.get(cid, {}).get('active', False):
                         still_active = True
                         break
-                
-                if not still_active:
-                    logging.info("⚡ تم إنهاء السؤال عالمياً بسبب إجابة سريعة")
-                    break
-                
-                await asyncio.sleep(0.5) # فحص الحساس كل نصف ثانية
+                if not still_active: break
+                await asyncio.sleep(0.5)
 
-            # 6️⃣ إغلاق السؤال وتحديث النقاط
+            # 6️⃣ إغلاق السؤال وتحديث النقاط (يجب أن يظل داخل الـ for)
             res_tasks = []
             for cid in all_chats:
                 if cid in active_quizzes:
@@ -2126,10 +2118,10 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name):
                     if uid not in group_scores[cid]:
                         group_scores[cid][uid] = {"name": w['name'], "points": 0}
                     group_scores[cid][uid]['points'] += 10
-
                 res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
             await asyncio.gather(*res_tasks, return_exceptions=True)
-
+            
+            # (اختياري) عداد تنازلي هنا للسؤال التالي
             # 7️⃣ العداد التنازلي للسؤال القادم
             if i < total_q - 1:
                 for cid in all_chats:
