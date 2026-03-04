@@ -129,27 +129,73 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
-async def send_creative_results(chat_id, correct_ans, winners, overall_scores):
-    """تصميم ياسر المطور: دمج الفائزين والترتيب في رسالة واحدة"""
-    msg =  "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n"
-    msg += f"✅ الإجابة الصحيحة: <b>{correct_ans}</b>\n"
-    msg += "┉┉┅┅┅┄┄┄┈•◦•┈┄┄┄┅┅┅┉┉\n\n"
+async def send_creative_results(chat_id, correct_ans, winners, group_scores, wrong_answers=None, is_public=False, mode="السرعة ⚡"):
+    """قالب ياسر المطور: يدعم الإذاعة العامة، الخاصة، السرعة، ووقت السؤال"""
     
+    # تحديد شعار النظام
+    mode_icon = "⚡" if "سرعة" in mode else "⏰"
+    
+    # 1️⃣ الرأس الزخرفي
+    msg = "👑 <b>تـفـاصـيـل الـجـولـة الـمـلـكـيـة</b> 👑\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+
+    # 2️⃣ الإجابة الصحيحة
+    msg += f"🎯 الإجابة الصحيحة: <b>「 {correct_ans} 」</b>\n"
+    msg += f"⚙️ نظام المسابقة: <b>{mode} {mode_icon}</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n\n"
+
+    # 3️⃣ قسم الأبطال (المتفوقين)
     if winners:
-        msg += "❃─── { جواب صح} ───❃\n"
-        for i, w in enumerate(winners, 1):
-            msg += f"{i}- {w['name']} (+10)\n"
+        msg += "🌟 <b>لائحة شرف الجولة</b> 🌟\n"
+        # ترتيب حسب السرعة
+        sorted_winners = sorted(winners, key=lambda x: x.get('time', 0))
+        for i, w in enumerate(sorted_winners, 1):
+            # تمييز المركز الأول في نظام السرعة
+            crown = "🥇" if i == 1 and mode_icon == "⚡" else "⭐️"
+            time_info = f" ⏱ <code>{w['time']}s</code>" if 'time' in w else ""
+            msg += f"{crown} ⇠ <b>{w['name']}</b>{time_info}\n"
     else:
-        msg += "❌ لم ينجح أحد في الإجابة على هذا السؤال\n"
+        msg += "💤 <b>للأسف.. الوقت انتهى دون فائز!</b>\n"
     
-    leaderboard = sorted(overall_scores.values(), key=lambda x: x['points'], reverse=True)
-    msg += "\n❃─── { الترتيب} ───❃\n"
-    medals = ["🥇", "🥈", "🥉"]
-    for i, player in enumerate(leaderboard[:3]):
-        medal = medals[i] if i < 3 else "👤"
-        msg += f"{medal} {player['name']} — {player['points']}\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n"
+
+    # 4️⃣ قسم الترتيب (ذكي: يفرق بين العام والخاص)
+    msg += "\n📊 <b>مـوقـف الـنـقـاط الـحـالـي:</b>\n"
     
-    await bot.send_message(chat_id, msg, parse_mode="HTML")
+    if is_public:
+        # --- [ إذاعة عامة: نظام المجموعات ] ---
+        # نجلب أعلى 3 مجموعات في المسابقة ككل لزيادة المنافسة
+        all_groups = []
+        for gid, players in group_scores.items():
+            if players:
+                total_pts = sum(p['points'] for p in players.values())
+                all_groups.append({'id': gid, 'points': total_pts})
+        
+        sorted_groups = sorted(all_groups, key=lambda x: x['points'], reverse=True)
+        
+        for i, g in enumerate(sorted_groups[:3]):
+            medals = ["🥇", "🥈", "🥉"]
+            msg += f"{medals[i]} <b>جروب: {g['id']}</b> ⇠ <code>{g['points']}</code> ن\n"
+        msg += "<i>بقية المجموعات مشعللة المنافسة.. 🔥</i>\n"
+    else:
+        # --- [ إذاعة خاصة: ترتيب أعضاء المجموعة ] ---
+        current_data = group_scores.get(chat_id, {})
+        sorted_players = sorted(current_data.values(), key=lambda x: x['points'], reverse=True)
+        
+        medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+        for i, p in enumerate(sorted_players[:5]):
+            medal = medals.get(i, "👤")
+            msg += f"{medal} <b>{p['name']}</b> ⇠ <code>{p['points']}</code> ن\n"
+
+    # 5️⃣ قسم الإجابات الخاطئة (اختياري وبسيط)
+    if wrong_answers:
+        msg += "\n🛑 <b>محاولات لم تصب:</b> "
+        msg += " | ".join([f"<s>{name}</s>" for name in wrong_answers[:5]])
+
+    msg += "\n\n🚀 <i>السؤال التالي يتحضر الآن..</i>"
+
+    return await bot.send_message(chat_id, msg, parse_mode="HTML")
+    
 async def send_final_results(chat_id, scores, total_q, is_public=False):
     """
     إصلاح ياسر المطور: عرض العباقرة في كل الحالات مع معالجة الأخطاء
@@ -288,6 +334,7 @@ def get_categories_kb(user_id):
     
     return kb
 
+
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
@@ -338,7 +385,6 @@ def get_setup_quiz_kb(user_id):
         InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
     )
     return kb
-
 
 # ==========================================
 # الدوال المساعدة المحدثة (حماية + أسماء حقيقية)
@@ -1899,6 +1945,7 @@ async def delete_after(message, delay):
         await message.delete()
     except Exception: 
         pass
+
 # ==========================================
 # [2] المحرك الموحد (نسخة الإصلاح والتلميح الناري 🔥)
 # ==========================================
@@ -2331,8 +2378,7 @@ async def unified_answer_checker(m: types.Message):
                 # تسجيل الفائز في الذاكرة المؤقتة للمجموعة
                 quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
 
-                # 🔵 رد الفوز
-                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")    
+                    
                 return
     # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
     elif cid in active_quizzes and active_quizzes[cid].get('active'):
@@ -2352,7 +2398,7 @@ async def unified_answer_checker(m: types.Message):
 class AdminStates(StatesGroup):
     waiting_for_new_token = State()
     waiting_for_broadcast = State()
-## =========================================
+# =========================================
 #          👑 غرفة عمليات المطور 👑
 # =========================================
 
@@ -2368,7 +2414,6 @@ def get_main_admin_kb():
     kb.row(InlineKeyboardButton("🔑 استبدال توكين البوت", callback_data="admin_change_token"))
     kb.row(InlineKeyboardButton("❌ إغلاق اللوحة", callback_data="botq_close"))
     return kb
-
 # --- 1. معالج الأمر الرئيسي /admin (المعدل للنظام الموحد) ---
 @dp.message_handler(commands=['admin'], user_id=ADMIN_ID)
 async def admin_dashboard(message: types.Message):
@@ -2424,7 +2469,6 @@ async def system_restart(c: types.CallbackQuery):
     await bot.close()
     await storage.close()
     os._exit(0)
-
 # --- 4. معالج زر استبدال التوكين ---
 @dp.callback_query_handler(text="admin_change_token", user_id=ADMIN_ID)
 async def ask_new_token(c: types.CallbackQuery):
@@ -2434,7 +2478,8 @@ async def ask_new_token(c: types.CallbackQuery):
         reply_markup=InlineKeyboardMarkup().add(InlineKeyboardButton("⬅️ تراجع", callback_data="admin_back"))
     )
     await AdminStates.waiting_for_new_token.set()
-# --- [ إدارة أسئلة البوت الرسمية - نسخة ياسر الملك المحدثة 2026 ] ---
+
+    # --- [ إدارة أسئلة البوت الرسمية - نسخة ياسر الملك المحدثة 2026 ] ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('botq_'), user_id=ADMIN_ID)
 async def process_bot_questions_panel(c: types.CallbackQuery, state: FSMContext):
