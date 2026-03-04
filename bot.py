@@ -2269,43 +2269,60 @@ async def unified_answer_checker(m: types.Message):
     uid = m.from_user.id
     user_text = m.text.strip() if m.text else ""
 
-    # 1️⃣ أولاً: التحقق من "الإذاعة العالمية"
+    # 1️⃣ التحقق من وجود مسابقة نشطة في هذه المجموعة
     if cid in active_quizzes and active_quizzes[cid].get('active'):
-        # هنا السر: نستخدم المرجع المباشر للقاموس
-        correct_ans = str(active_quizzes[cid]['ans']).strip()
+        quiz = active_quizzes[cid]
+        correct_ans = str(quiz['ans']).strip()
         
+        # ⚖️ ميزان العدل: فحص الإجابة
         if is_answer_correct(user_text, correct_ans):
-            # التأكد أن المستخدم لم يفز مسبقاً
-            if not any(w['id'] == uid for w in active_quizzes[cid].get('winners', [])):
+            
+            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
+            if not any(w['id'] == uid for w in quiz.get('winners', [])):
                 
-                # 🛑 [أمر الإغلاق الفوري] - الرادار ينفذ الإعدام العالمي 
-                if active_quizzes[cid].get('mode') == 'السرعة ⚡':
-                    p_ids = active_quizzes[cid].get('participants_ids', [])
+                # 🛑 [نظام الإغلاق العالمي الفوري] ⚡
+                if quiz.get('mode') == 'السرعة ⚡':
+                    # محاولة جلب المجموعات من الرام أولاً لسرعة البرق
+                    p_ids = quiz.get('participants_ids', [])
+                    
+                    # إذا كانت الرام فارغة (لأي سبب)، نسحب "الحبل السري" من سوبابيس
+                    if not p_ids and quiz.get('db_quiz_id'):
+                        try:
+                            res = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz['db_quiz_id']).execute()
+                            p_ids = [item['chat_id'] for item in res.data]
+                        except: p_ids = [cid] # fallback للمجموعة الحالية
+
+                    # إغلاق "الإشارة" في كل المجموعات المرتبطة
                     for p_cid in p_ids:
                         if p_cid in active_quizzes:
                             active_quizzes[p_cid]['active'] = False
             
-                    logging.info(f"⚡ تم إنهاء السؤال في {len(p_ids)} مجموعة بنجاح!")
-                # الآن كمل باقي المهام (سوبابيس والرد)
-                db_id = active_quizzes[cid].get('db_quiz_id')
+                    logging.info(f"⚡ إغلاق عالمي: البطل {m.from_user.first_name} أنهى السؤال في {len(p_ids)} مجموعة.")
+
+                # 💾 حفظ الإجابة في سوبابيس (Answers Log)
+                db_id = quiz.get('db_quiz_id')
                 if db_id:
-                    def save():
+                    def save_to_db():
                         try:
                             supabase.table("answers_log").insert({
                                 "quiz_id": db_id,
-                                "question_no": active_quizzes[cid].get('current_index', 1),
-                                "chat_id": cid, "user_id": uid, "user_name": m.from_user.first_name,
-                                "answer_text": user_text, "points_earned": 10
+                                "question_no": quiz.get('current_index', 1),
+                                "chat_id": cid, 
+                                "user_id": uid, 
+                                "user_name": m.from_user.first_name,
+                                "answer_text": user_text, 
+                                "is_correct": True,
+                                "points_earned": 10
                             }).execute()
-                        except Exception as e: logging.error(f"❌ سوبابيس: {e}")
-                    asyncio.create_task(asyncio.to_thread(save))
+                        except Exception as e: logging.error(f"❌ خطأ حفظ النتيجة: {e}")
+                    
+                    asyncio.create_task(asyncio.to_thread(save_to_db))
 
-                # تسجيل الفائز في الرام
-                active_quizzes[cid]['winners'].append({"name": m.from_user.first_name, "id": uid})
+                # تسجيل الفائز في الذاكرة المؤقتة للمجموعة
+                quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
 
-                # 🔵 [إعلان الفوز]
-                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nإجابتك صحيحة وتم تسجيل نقاطك عالمياً. 🚀", parse_mode="HTML")    
-                
+                # 🔵 رد الفوز
+                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")    
                 return
     # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
     elif cid in active_quizzes and active_quizzes[cid].get('active'):
@@ -2318,9 +2335,6 @@ async def unified_answer_checker(m: types.Message):
                 
                 if quiz_p.get('mode') == 'السرعة ⚡':
                     quiz_p['active'] = False
-                
-                # إعلان الفوز للمسابقات الخاصة
-                await m.reply(f"✅ كفو! إجابة صحيحة.")
                 return
 # ==========================================
 # ==========================================
