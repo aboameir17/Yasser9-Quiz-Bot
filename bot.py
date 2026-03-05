@@ -2369,72 +2369,69 @@ async def unified_answer_checker(m: types.Message):
     uid = m.from_user.id
     user_text = m.text.strip() if m.text else ""
 
-    # 1️⃣ التحقق من وجود مسابقة نشطة في هذه المجموعة
+    # 1️⃣ فحص المسابقات النشطة (الإذاعة العامة والخاصة)
     if cid in active_quizzes and active_quizzes[cid].get('active'):
         quiz = active_quizzes[cid]
         correct_ans = str(quiz['ans']).strip()
         
-        # ⚖️ ميزان العدل: فحص الإجابة
+        # ⚖️ فحص صحة الإجابة
         if is_answer_correct(user_text, correct_ans):
             
-            # التأكد أن المستخدم لم يفز مسبقاً في هذا السؤال
-            if not any(w['id'] == uid for w in quiz.get('winners', [])):
-                
-                # 🛑 [نظام الإغلاق العالمي الفوري] ⚡
-                if quiz.get('mode') == 'السرعة ⚡':
-                    # محاولة جلب المجموعات من الرام أولاً لسرعة البرق
-                    p_ids = quiz.get('participants_ids', [])
-                    
-                    # إذا كانت الرام فارغة (لأي سبب)، نسحب "الحبل السري" من سوبابيس
-                    if not p_ids and quiz.get('db_quiz_id'):
-                        try:
-                            res = supabase.table("quiz_participants").select("chat_id").eq("quiz_id", quiz['db_quiz_id']).execute()
-                            p_ids = [item['chat_id'] for item in res.data]
-                        except: p_ids = [cid] # fallback للمجموعة الحالية
-
-                    # إغلاق "الإشارة" في كل المجموعات المرتبطة
-                    for p_cid in p_ids:
-                        if p_cid in active_quizzes:
-                            active_quizzes[p_cid]['active'] = False
+            # 🔥 [نظام منع التكرار العابر للمجموعات] 🔥
+            # نفحص كل المجموعات المرتبطة بهذه المسابقة: هل هذا المستخدم (uid) موجود في قائمة الفائزين في أي منها؟
+            p_ids = quiz.get('participants_ids', [cid])
+            is_already_winner_globally = False
             
-                    logging.info(f"⚡ إغلاق عالمي: البطل {m.from_user.first_name} أنهى السؤال في {len(p_ids)} مجموعة.")
-
-                # 💾 حفظ الإجابة في سوبابيس (Answers Log)
-                db_id = quiz.get('db_quiz_id')
-                if db_id:
-                    def save_to_db():
-                        try:
-                            supabase.table("answers_log").insert({
-                                "quiz_id": db_id,
-                                "question_no": quiz.get('current_index', 1),
-                                "chat_id": cid, 
-                                "user_id": uid, 
-                                "user_name": m.from_user.first_name,
-                                "answer_text": user_text, 
-                                "is_correct": True,
-                                "points_earned": 10
-                            }).execute()
-                        except Exception as e: logging.error(f"❌ خطأ حفظ النتيجة: {e}")
-                    
-                    asyncio.create_task(asyncio.to_thread(save_to_db))
-
-                # تسجيل الفائز في الذاكرة المؤقتة للمجموعة
-                quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
-
-                    
+            for p_cid in p_ids:
+                if p_cid in active_quizzes:
+                    if any(w['id'] == uid for w in active_quizzes[p_cid].get('winners', [])):
+                        is_already_winner_globally = True
+                        break
+            
+            if is_already_winner_globally:
+                # اللاعب أجاب مسبقاً في مجموعة أخرى؛ نتجاهله بصمت أو نرسل تحذير بسيط
+                logging.info(f"🚫 محاولة تكرار مرفوضة من {m.from_user.first_name} (ID: {uid})")
                 return
-    # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
-    elif cid in active_quizzes and active_quizzes[cid].get('active'):
-        quiz_p = active_quizzes[cid]
-        correct_ans = str(quiz_p['ans']).strip()
-        
-        if is_answer_correct(user_text, correct_ans):
-            if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
-                quiz_p['winners'].append({"name": m.from_user.first_name, "id": uid})
+
+            # --- [ إذا وصل الكود هنا، معناه أن هذه أول إجابة صحيحة له في هذه الجولة ] ---
+
+            # 🛑 [نظام الإغلاق العالمي الفوري] ⚡ (في وضع السرعة)
+            if quiz.get('mode') == 'السرعة ⚡':
+                # إغلاق السؤال في كل المجموعات فوراً لمنع أي شخص آخر من الإجابة
+                for p_cid in p_ids:
+                    if p_cid in active_quizzes:
+                        active_quizzes[p_cid]['active'] = False
                 
-                if quiz_p.get('mode') == 'السرعة ⚡':
-                    quiz_p['active'] = False
-                return
+                logging.info(f"⚡ إغلاق عالمي: البطل {m.from_user.first_name} حسم السؤال.")
+
+            # 💾 حفظ الإجابة في سوبابيس (Answers Log)
+            db_id = quiz.get('db_quiz_id')
+            if db_id:
+                def save_to_db():
+                    try:
+                        supabase.table("answers_log").insert({
+                            "quiz_id": db_id,
+                            "question_no": quiz.get('current_index', 1),
+                            "chat_id": cid, 
+                            "user_id": uid, 
+                            "user_name": m.from_user.first_name,
+                            "answer_text": user_text, 
+                            "is_correct": True,
+                            "points_earned": 10
+                        }).execute()
+                    except Exception as e: logging.error(f"❌ خطأ حفظ النتيجة: {e}")
+                
+                asyncio.create_task(asyncio.to_thread(save_to_db))
+
+            # تسجيل الفائز في الذاكرة (للمجموعة الحالية)
+            quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
+
+            # 🔵 رد الفوز
+            if quiz.get('mode') == 'السرعة ⚡':
+                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")
+            else:
+                await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>\nتم تسجيل نقاطك في بنك الإذاعة العالمية. 🏆", parse_mode="HTML")
+            return
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
