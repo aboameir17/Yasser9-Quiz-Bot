@@ -2238,15 +2238,15 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
                         group_scores[cid][uid] = {"name": w['name'], "points": 0}
                     group_scores[cid][uid]['points'] += 10
                 
-                # 🔵 [التعديل الجوهري] نرسل global_winners بدلاً من local_winners
-                # لكي يظهر اسم بطل الجولة للكل في القالب الجديد
+                # 🔵 [التعديل العالمي الشامل]
                 res_tasks.append(send_creative_results(
                     chat_id=cid, 
                     correct_ans=ans, 
-                    winners=global_winners, # 👈 هنا السر! الفائز العالمي يظهر للجميع
-                    group_scores=group_scores, # نرسل القاموس كامل للترتيب
-                    is_public=True,
-                    mode=quiz_data.get('mode', 'السرعة ⚡')
+                    winners=global_winners,      # بطل الجولة (يراه الجميع)
+                    group_scores=group_scores,   # ترتيب كل اللاعبين والمجموعات (بدون حذف)
+                    is_public=True,              # تفعيل وضع الإذاعة العامة
+                    mode=quiz_data.get('mode', 'السرعة ⚡'),
+                    group_names=group_names_map  # قاموس الأسماء الذي عرفناه في بداية الدالة
                 ))
             
             await asyncio.gather(*res_tasks, return_exceptions=True)
