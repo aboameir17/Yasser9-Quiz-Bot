@@ -131,46 +131,47 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # ==========================================
 async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡", group_names=None):
     """
-    قالب ياسر الملكي المطور: 
-    - تم إضافة group_names لاستقبال أسماء المجموعات من المحرك مباشرة.
-    - عرض ترتيب عالمي شامل بدون حدود.
+    قالب ياسر الملكي - النسخة المصلحة:
+    1. دمج نقاط اللاعب عالمياً (منع التكرار).
+    2. وضع كل فارس في سطر مستقل تحت مجموعته.
     """
     mode_icon = "⚡" if "سرعة" in mode else "⏰"
     
-    # 1️⃣ الرأس الزخرفي
     msg = "👑 <b>تـفـاصـيـل الـجـولـة الـمـلـكـيـة</b> 👑\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += f"🎯 الإجابة الصحيحة: <b>「 {correct_ans} 」</b>\n"
-    msg += f"⚙️ نظام المسابقة: <b>{mode} {mode_icon} {mode_icon}</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 2️⃣ بطل الجولة الأسرع (عالمياً)
+    # 1. بطل الجولة الأسرع عالمياً
     if winners:
         top_global = winners[0] 
         time_info = f" ⏱ <code>{top_global['time']}s</code>" if 'time' in top_global else ""
-        msg += "🌟 <b>بطل هذه الجولة:</b>\n"
-        msg += f"🥇 ⇠ <b>{top_global['name']}</b> {time_info}\n"
+        msg += f"🌟 <b>بطل هذه الجولة:</b>\n🥇 ⇠ <b>{top_global['name']}</b> {time_info}\n"
     else:
         msg += "💤 <b>للأسف.. الوقت انتهى دون فائز!</b>\n"
     
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 3️⃣ لوحة النقاط العالمية (جميع اللاعبين)
+    # --- [ 2. حل مشكلة التكرار في الترتيب العالمي ] ---
     msg += "📊 <b>الـنـقـاط الـحـالـية (الترتيب العالمي):</b>\n"
-    all_players = []
+    
+    combined_players = {} # قاموس لدمج نقاط اللاعب حسب الـ ID
     for gid, players in group_scores.items():
         for uid, pdata in players.items():
-            all_players.append(pdata)
+            if uid not in combined_players:
+                combined_players[uid] = {"name": pdata['name'], "points": 0}
+            combined_players[uid]['points'] += pdata['points']
     
-    # ترتيب اللاعبين حسب النقاط
-    sorted_players = sorted(all_players, key=lambda x: x['points'], reverse=True)
+    # ترتيب اللاعبين بعد الدمج
+    sorted_players = sorted(combined_players.values(), key=lambda x: x['points'], reverse=True)
+    medals = ["🥇", "🥈", "🥉"]
     for i, p in enumerate(sorted_players):
-        medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "👤"
+        medal = medals[i] if i < 3 else "👤"
         msg += f"{medal} <b>{p['name']}</b> ⇠ <code>{p['points']}</code> ن\n"
     
     msg += "━━━━━━━━━━━━━━━━━━\n"
 
-    # 4️⃣ عرض كافة المجموعات (بأسمائها الحقيقية)
+    # --- [ 3. عرض المجموعات والفرسان في سطور مستقلة ] ---
     if is_public:
         msg += "\n🏘 <b>تـرتـيـب المجموعات المشاركة:</b>\n"
         
@@ -178,26 +179,23 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
         for gid, players in group_scores.items():
             if players:
                 total_group_pts = sum(p['points'] for p in players.values())
+                # ترتيب الفرسان داخل المجموعة
                 local_top = sorted(players.values(), key=lambda x: x['points'], reverse=True)
-                players_line = " | ".join([f"{p['name']} ({p['points']}ن)" for p in local_top])
-                
-                # جلب اسم المجموعة من القاموس الممرر من المحرك (أسرع بـ 100 مرة)
-                g_id_str = str(gid)
-                g_name = group_names.get(g_id_str, f"جروب {g_id_str}") if group_names else f"جروب {g_id_str}"
-
-                group_ranking.append({
-                    'name': g_name,
-                    'points': total_group_pts,
-                    'details': players_line
-                })
+                group_ranking.append({'id': gid, 'points': total_group_pts, 'players': local_top})
         
-        # ترتيب المجموعات حسب النقاط
         sorted_groups = sorted(group_ranking, key=lambda x: x['points'], reverse=True)
         
         for i, g in enumerate(sorted_groups):
-            msg += f" {i+1}➖ <b>مجموعة: {g['name']}</b>\n"
+            g_id_str = str(g['id'])
+            g_name = group_names.get(g_id_str, f"جروب {g_id_str}") if group_names else f"جروب {g_id_str}"
+            
+            msg += f" {i+1}➖ <b>مجموعة: {g_name}</b>\n"
             msg += f"┗ 🏆 الإجمالي: <code>{g['points']}</code> نقطة\n"
-            msg += f"┗ 👥 فرسانها: <i>{g['details']}</i>\n"
+            
+            # وضع كل لاعب في سطر مستقل
+            for p in g['players']:
+                msg += f"   ┗ 👤 {p['name']} ⇠ ({p['points']}ن)\n"
+            
             msg += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
 
     msg += "\n🚀 <i>استعدوا.. السؤال التالي يتحضر الآن!</i>"
