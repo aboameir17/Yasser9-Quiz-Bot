@@ -58,21 +58,21 @@ answered_users_global = {}
 
 # [2] دالة إعلان تفاصيل المسابقة (المصلحة)
 async def announce_quiz_type(chat_id, quiz_data, engine_type):
-    """إعلان تفاصيل المسابقة بناءً على عمود is_public الحقيقي"""
+    """إعلان تفاصيل المسابقة المنطلقة (خاصة/عامة)"""
     source_map = {
         "bot": "أسئلة البوت الذكية 🤖", 
         "user": "أسئلة المستخدم الخاصة 👤"
     }
     source_text = source_map.get(engine_type, "قاعدة بيانات خاصة 🔒")
     
+    # جلب البيانات مع وضع قيم افتراضية للأمان
     q_name = quiz_data.get('quiz_name', 'تحدي جديد')
     q_count = quiz_data.get('questions_count', 10)
     q_time = quiz_data.get('time_limit', 15)
-    q_mode = quiz_data.get('mode', 'السرعة ⚡')
     
-    # 🛠️ التصحيح الحقيقي هنا:
+    # 🛠️ تحديد النطاق بدقة
     is_pub = quiz_data.get('is_public', False)
-    q_scope = "إذاعة عامة 🌐" if is_pub is True else "مسابقة داخلية 📍"
+    q_scope = "إذاعة عامة 🌐" if is_pub else "مسابقة داخلية 📍"
     
     announcement = (
         f"📊 **تفاصيل المسابقة المنطلقة:**\n"
@@ -80,20 +80,18 @@ async def announce_quiz_type(chat_id, quiz_data, engine_type):
         f"🏆 الاسم: **{q_name}**\n"
         f"📁 المصدر: `{source_text}`\n"
         f"📡 النطاق: **{q_scope}**\n"
-        f"🔢 عدد الأسئلة: `{q_count}`\n"
-        f"⏳ وقت السؤال: `{q_time} ثانية`\n"
-        f"🔖 النظام: **{q_mode}**\n"
+        f"🔢 الأسئلة: `{q_count}` سؤال\n"
+        f"⏳ الوقت: `{q_time} ثانية لكل سؤال`\n"
         f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
-        f"⏳ **استعدوا.. السؤال الأول سيبدأ خلال 3 ثواني!**"
+        f"⏳ **استعدوا.. الانطلاقة بعد 3 ثواني!**"
     )
     
     try:
         msg = await bot.send_message(chat_id, announcement, parse_mode="Markdown")
         await asyncio.sleep(3) 
-        await msg.delete() 
+        await msg.delete() # حذف رسالة الإعلان لبدء السؤال الأول في شاشة نظيفة
     except Exception as e:
         logging.error(f"Error in announcement: {e}")
-
 # [3] دالة قالب السؤال (المصلحة)
 async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
     """
@@ -1768,63 +1766,55 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
             c.data = f"quiz_settings_{quiz_id}_{user_id}"
             return await handle_secure_actions(c, state)
 
-        # 5️⃣ الحفظ وتشغيل وحذف وإغلاق (النسخة المصلحة 2026 🚀)
-        elif c.data.startswith('save_quiz_process_'):
-            # 🛠️ تصحيح الاندكس من 2 إلى 3 لسحب الرقم الحقيقي
-            quiz_id = data_parts[3] 
-            await c.answer("✅ تم الحفظ بنجاح!", show_alert=True)
-            c.data = f"manage_quiz_{quiz_id}_{user_id}"
-            return await handle_secure_actions(c, state)
-
-        elif c.data.startswith('close_'):
-            try: return await c.message.delete()
-            except: pass
-
-        elif c.data.startswith('confirm_del_'):
-            quiz_id = data_parts[2]
-            kb = InlineKeyboardMarkup().add(
-                InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_{quiz_id}_{user_id}"),
-                InlineKeyboardButton("🚫 تراجع", callback_data=f"manage_quiz_{quiz_id}_{user_id}")
-            )
-            return await c.message.edit_text("⚠️ **هل أنت متأكد من الحذف؟**", reply_markup=kb)
-
+        # --- [ 1. إصلاح نظام الحذف والعودة للقائمة ] ---
         elif c.data.startswith('final_del_'):
             quiz_id = data_parts[2]
+            user_id = data_parts[3]
+            # الحذف من القاعدة
             supabase.table("saved_quizzes").delete().eq("id", quiz_id).execute()
-            await c.answer("🗑️ تم الحذف", show_alert=True)
-            # إعادة عرض القائمة بعد الحذف
-            c.data = f"show_quizzes_{user_id}"
-            return await handle_secure_actions(c, state)
+            await c.answer("🗑️ تم الحذف بنجاح", show_alert=True)
+            
+            # جلب القائمة المحدثة وعرضها في نفس الرسالة (تحديث اللوحة)
+            res = supabase.table("saved_quizzes").select("*").eq("user_id", user_id).execute()
+            # تأكد من استدعاء دالة الكيبورد الخاصة بك هنا
+            kb = get_quizzes_keyboard(res.data, user_id) 
+            return await c.message.edit_text("✅ تم الحذف. إليك مسابقاتك المتبقية:", reply_markup=kb)
 
-       # --- [ نظام تشغيل المسابقات: عامة أو خاصة ] ---
+        # --- [ 2. إصلاح نظام التشغيل وحذف اللوحة ] ---
         elif c.data.startswith('run_'):
             quiz_id = data_parts[1]
             user_id = data_parts[2]
             
-            # 1. جلب بيانات المسابقة لمرة واحدة فقط
             res = supabase.table("saved_quizzes").select("*").eq("id", quiz_id).single().execute()
             q_data = res.data
             
             if not q_data: 
                 return await c.answer("❌ المسابقة غير موجودة!")
 
-            # 2. التحقق: هل هي إذاعة عامة (بث) أم تشغيل خاص؟
+            # ✅ حل الخلل الثالث: حذف لوحة التحكم فوراً لبدء المسابقة بنظافة
+            try: 
+                await c.message.delete()
+            except: 
+                pass
+
             if q_data.get('is_public'):
                 # 🌐 مسار الإذاعة العامة
                 await c.answer("🌐 جاري إطلاق الإذاعة العامة للمجموعات...")
                 await start_broadcast_process(c, quiz_id, user_id)
             else:
-                # 📍 مسار التشغيل الخاص (في نفس الشات)
+                # 📍 مسار التشغيل الخاص (المسابقات الخاصة فقط)
                 await c.answer("🚀 انطلقنا!")
                 
-                # اختيار المحرك المناسب بناءً على نوع المسابقة
+                # ✅ حل الخلل الثاني: استدعاء دالة الإعلان لتعمل في المسابقات الخاصة
+                engine_type = "bot" if q_data.get('is_bot_quiz') else "user"
+                await announce_quiz_type(c.message.chat.id, q_data, engine_type)
+
+                # اختيار المحرك المناسب
                 if q_data.get('is_bot_quiz'):
-                    # استدعاء المحرك الشغال (نظام البوت)
                     asyncio.create_task(engine_bot_questions(c.message.chat.id, q_data, c.from_user.first_name))
                 else:
-                    # استدعاء محرك أسئلة الأعضاء
                     asyncio.create_task(engine_user_questions(c.message.chat.id, q_data, c.from_user.first_name))
-            
+        
             return # إنهاء المعالج بنجاح
 
     except Exception as e:
