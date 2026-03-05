@@ -129,11 +129,11 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
-async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡"):
+async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡", group_names=None):
     """
-    قالب ياسر الملكي النهائي: 
-    - يعرض أسماء المجموعات الحقيقية.
-    - ترتيب كامل وشامل لجميع المشاركين.
+    قالب ياسر الملكي المطور: 
+    - تم إضافة group_names لاستقبال أسماء المجموعات من المحرك مباشرة.
+    - عرض ترتيب عالمي شامل بدون حدود.
     """
     mode_icon = "⚡" if "سرعة" in mode else "⏰"
     
@@ -162,6 +162,7 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
         for uid, pdata in players.items():
             all_players.append(pdata)
     
+    # ترتيب اللاعبين حسب النقاط
     sorted_players = sorted(all_players, key=lambda x: x['points'], reverse=True)
     for i, p in enumerate(sorted_players):
         medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "👤"
@@ -180,16 +181,9 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
                 local_top = sorted(players.values(), key=lambda x: x['points'], reverse=True)
                 players_line = " | ".join([f"{p['name']} ({p['points']}ن)" for p in local_top])
                 
-                # جلب اسم المجموعة (نحاول جلب الاسم المخزن سابقاً أو استخدام ID كاحتياط)
-                # ملاحظة: سنفترض أن الاسم موجود في بيانات المجموعة المخزنة
-                g_name = "مجموعة غير معروفة"
-                try:
-                    # هنا يمكنك جلب الاسم من سوبابيس أو من ذاكرة البوت
-                    res = supabase.table("groups_hub").select("group_name").eq("group_id", gid).execute()
-                    if res.data: g_name = res.data[0]['group_name']
-                    else: g_name = f"جروب {gid}" # اسم افتراضي
-                except:
-                    g_name = f"جروب {gid}"
+                # جلب اسم المجموعة من القاموس الممرر من المحرك (أسرع بـ 100 مرة)
+                g_id_str = str(gid)
+                g_name = group_names.get(g_id_str, f"جروب {g_id_str}") if group_names else f"جروب {g_id_str}"
 
                 group_ranking.append({
                     'name': g_name,
@@ -209,6 +203,7 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
     msg += "\n🚀 <i>استعدوا.. السؤال التالي يتحضر الآن!</i>"
 
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
+    
 async def send_final_results(chat_id, scores, total_q, is_public=False):
     """
     إصلاح ياسر المطور: عرض العباقرة في كل الحالات مع معالجة الأخطاء
