@@ -131,54 +131,84 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # ==========================================
 async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡"):
     """
-    قالب ياسر العالمي 2026: 
-    - يعلن عن بطل الجولة للجميع (حتى لو من مجموعة أخرى).
-    - يظهر ترتيب المجموعة الحالي لزيادة الحماس.
+    قالب ياسر الملكي النهائي: 
+    - يعرض أسماء المجموعات الحقيقية.
+    - ترتيب كامل وشامل لجميع المشاركين.
     """
     mode_icon = "⚡" if "سرعة" in mode else "⏰"
     
-    # 1️⃣ الرأس الملكي (ثابت للجميع)
+    # 1️⃣ الرأس الزخرفي
     msg = "👑 <b>تـفـاصـيـل الـجـولـة الـمـلـكـيـة</b> 👑\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
     msg += f"🎯 الإجابة الصحيحة: <b>「 {correct_ans} 」</b>\n"
     msg += f"⚙️ نظام المسابقة: <b>{mode} {mode_icon} {mode_icon}</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 2️⃣ إعلان بطل الجولة (أول شخص أجاب في العالم)
+    # 2️⃣ بطل الجولة الأسرع (عالمياً)
     if winners:
-        # نأخذ أول شخص في قائمة الفائزين (الأسرع عالمياً)
-        top_winner = winners[0] 
-        time_info = f" ⏱ <code>{top_winner['time']}s</code>" if 'time' in top_winner else ""
-        
-        msg += "🌟 <b>لائحة شرف الجولة</b> 🌟\n"
-        msg += f"🥇 ⇠ <b>{top_winner['name']}</b> {time_info}\n"
-        
-        # إضافة لمسة ذكية: إذا كان الفائز من مجموعة أخرى، يذكر اسم مجموعته (اختياري)
-        # msg += f"🏘 من مجموعة: <code>{top_winner.get('group_name', 'مجموعة صديقة')}</code>\n"
+        top_global = winners[0] 
+        time_info = f" ⏱ <code>{top_global['time']}s</code>" if 'time' in top_global else ""
+        msg += "🌟 <b>بطل هذه الجولة:</b>\n"
+        msg += f"🥇 ⇠ <b>{top_global['name']}</b> {time_info}\n"
     else:
         msg += "💤 <b>للأسف.. الوقت انتهى دون فائز!</b>\n"
     
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 3️⃣ موقف النقاط الحالي (الترتيب داخل المجموعة التي استلمت الرسالة)
-    msg += "📊 <b>مـوقـف الـنـقـاط الـحـالـي:</b>\n"
+    # 3️⃣ لوحة النقاط العالمية (جميع اللاعبين)
+    msg += "📊 <b>الـنـقـاط الـحـالـية (الترتيب العالمي):</b>\n"
+    all_players = []
+    for gid, players in group_scores.items():
+        for uid, pdata in players.items():
+            all_players.append(pdata)
     
-    current_group_players = group_scores.get(chat_id, {})
-    if current_group_players:
-        # ترتيب أعضاء هذه المجموعة تحديداً
-        sorted_players = sorted(current_group_players.values(), key=lambda x: x['points'], reverse=True)
-        medals = {0: "🥇", 1: "🥈", 2: "🥉"}
-        for i, p in enumerate(sorted_players[:3]): # توب 3
-            medal = medals.get(i, "👤")
-            msg += f"{medal} <b>{p['name']}</b> ⇠ <code>{p['points']}</code> ن\n"
-    else:
-        msg += "<i>لا توجد نقاط مسجلة في مجموعتكم بعد..</i>\n"
+    sorted_players = sorted(all_players, key=lambda x: x['points'], reverse=True)
+    for i, p in enumerate(sorted_players):
+        medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "👤"
+        msg += f"{medal} <b>{p['name']}</b> ⇠ <code>{p['points']}</code> ن\n"
+    
+    msg += "━━━━━━━━━━━━━━━━━━\n"
 
-    # 4️⃣ التذييل
-    msg += "\n🚀 <i>السؤال التالي يتحضر الآن..</i>"
+    # 4️⃣ عرض كافة المجموعات (بأسمائها الحقيقية)
+    if is_public:
+        msg += "\n🏘 <b>تـرتـيـب المجموعات المشاركة:</b>\n"
+        
+        group_ranking = []
+        for gid, players in group_scores.items():
+            if players:
+                total_group_pts = sum(p['points'] for p in players.values())
+                local_top = sorted(players.values(), key=lambda x: x['points'], reverse=True)
+                players_line = " | ".join([f"{p['name']} ({p['points']}ن)" for p in local_top])
+                
+                # جلب اسم المجموعة (نحاول جلب الاسم المخزن سابقاً أو استخدام ID كاحتياط)
+                # ملاحظة: سنفترض أن الاسم موجود في بيانات المجموعة المخزنة
+                g_name = "مجموعة غير معروفة"
+                try:
+                    # هنا يمكنك جلب الاسم من سوبابيس أو من ذاكرة البوت
+                    res = supabase.table("groups_hub").select("group_name").eq("group_id", gid).execute()
+                    if res.data: g_name = res.data[0]['group_name']
+                    else: g_name = f"جروب {gid}" # اسم افتراضي
+                except:
+                    g_name = f"جروب {gid}"
+
+                group_ranking.append({
+                    'name': g_name,
+                    'points': total_group_pts,
+                    'details': players_line
+                })
+        
+        # ترتيب المجموعات حسب النقاط
+        sorted_groups = sorted(group_ranking, key=lambda x: x['points'], reverse=True)
+        
+        for i, g in enumerate(sorted_groups):
+            msg += f" {i+1}➖ <b>مجموعة: {g['name']}</b>\n"
+            msg += f"┗ 🏆 الإجمالي: <code>{g['points']}</code> نقطة\n"
+            msg += f"┗ 👥 فرسانها: <i>{g['details']}</i>\n"
+            msg += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+
+    msg += "\n🚀 <i>استعدوا.. السؤال التالي يتحضر الآن!</i>"
 
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
-    
 async def send_final_results(chat_id, scores, total_q, is_public=False):
     """
     إصلاح ياسر المطور: عرض العباقرة في كل الحالات مع معالجة الأخطاء
