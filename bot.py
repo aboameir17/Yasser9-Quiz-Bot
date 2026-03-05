@@ -50,6 +50,8 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 active_quizzes = {}
 cancelled_groups = set() # لحفظ المجموعات التي ضغطت إلغاء مؤقتاً
+# في أعلى الملف تماماً (Global Variable)
+answered_users_global = {}
 # ==========================================
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
