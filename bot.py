@@ -2421,7 +2421,7 @@ def is_answer_correct(user_msg, correct_ans):
     return False
 
 # ==========================================
-# 🎯 رادار الإجابات الموحد (نسخة ياسر النهائية)
+# 🎯 رادار الإجابات الموحد (نسخة التشطيب النهائي 2026)
 # ==========================================
 @dp.message_handler(lambda m: not m.text or not m.text.startswith('/'))
 async def unified_answer_checker(m: types.Message):
@@ -2429,51 +2429,69 @@ async def unified_answer_checker(m: types.Message):
     uid = m.from_user.id
     user_text = m.text.strip() if m.text else ""
 
-    # التأكد من وجود مسابقة نشطة في هذا الشات
+    # 1️⃣ التحقق من وجود أي مسابقة نشطة (أمان أول)
     if cid not in active_quizzes or not active_quizzes[cid].get('active'):
         return
 
     quiz = active_quizzes[cid]
+    # استخدام .get للحماية من خطأ string indices
     correct_ans = str(quiz.get('ans', '')).strip()
 
-    # 1️⃣ التحقق من صحة الإجابة (باستخدام دالتك السابقة)
+    # 2️⃣ ميزان العدل: فحص الإجابة
     if not is_answer_correct(user_text, correct_ans):
         return
 
-    # 2️⃣ فصل المسار: [ إذاعة عامة ] أم [ مسابقة خاصة ] ؟
-    is_public = quiz.get('is_public', False) # نعتمد على هذا المفتاح
+    # 3️⃣ الفحص الأمني: هل اللاعب فاز مسبقاً في هذا السؤال؟
+    if any(w['id'] == uid for w in quiz.get('winners', [])):
+        return
+
+    # 🚀 [تمييز المسار: عام أو خاص]
+    is_public = quiz.get('is_public', False)
 
     if is_public:
-        # 🌐 منطق الإذاعة العامة (بث لعدة مجموعات)
+        # ==========================================
+        # 🌐 مسار الإذاعة العامة (مكافحة الغش عابرة للمجموعات)
+        # ==========================================
         p_ids = quiz.get('participants_ids', [cid])
         
-        # منع التكرار العابر للمجموعات
-        if is_already_winner_global(uid, p_ids):
-            logging.info(f"🚫 تكرار مرفوض: {m.from_user.first_name}")
-            return
+        # 🔥 فحص الغش: هل أجاب في مجموعة أخرى؟
+        is_already_winner_globally = False
+        for p_cid in p_ids:
+            if p_cid in active_quizzes:
+                if any(w['id'] == uid for w in active_quizzes[p_cid].get('winners', [])):
+                    is_already_winner_globally = True
+                    break
+        
+        if is_already_winner_globally:
+            return logging.info(f"🚫 منع غش: {m.from_user.first_name} حاول التكرار.")
 
-        # إغلاق عالمي لوضع السرعة
+        # 🛑 نظام الإغلاق العالمي (وضع السرعة)
         if quiz.get('mode') == 'السرعة ⚡':
-            await close_quiz_globally(p_ids)
+            for p_cid in p_ids:
+                if p_cid in active_quizzes:
+                    active_quizzes[p_cid]['active'] = False
             await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")
         else:
-            await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>\nتم تسجيل نقاطك في بنك الإذاعة العالمية. 🏆", parse_mode="HTML")
+            await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>\nتم تسجيل نقاطك في الإذاعة العامة. 🏆", parse_mode="HTML")
 
     else:
-        # 📍 منطق المسابقة الخاصة (هنا تم حل مشكلة الـ Index)
-        # في المسابقة الخاصة لا نحتاج للف على p_ids لأنها مجموعة واحدة فقط
-        if any(w['id'] == uid for w in quiz.get('winners', [])):
-            return # أجاب مسبقاً في هذه المجموعة
-
+        # ==========================================
+        # 📍 مسار المسابقات الخاصة (نظام داخلي معزول)
+        # ==========================================
         if quiz.get('mode') == 'السرعة ⚡':
-            quiz['active'] = False # إغلاق السؤال في هذه المجموعة فقط
-            await m.reply(f"✅ <b>أحسنت يا {m.from_user.first_name}!</b>\nأنت أول من أجاب بشكل صحيح. 🥇", parse_mode="HTML")
+            quiz['active'] = False
+            await m.reply(f"🎯 <b>أحسنت يا {m.from_user.first_name}!</b>\nأول إجابة صحيحة وحسمت النقطة. 🥇", parse_mode="HTML")
         else:
             await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>", parse_mode="HTML")
 
-    # 3️⃣ العمليات المشتركة (حفظ البيانات وتسجيل الفائز)
+    # 4️⃣ العمليات المشتركة (تسجيل الفائز وحفظ السجلات)
     quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
-    asyncio.create_task(log_answer_to_supabase(quiz, m, user_text))
+    
+    # حفظ الإجابة في سوبابيس (بدون تعطيل الوقت)
+    db_id = quiz.get('db_quiz_id')
+    if db_id:
+        asyncio.create_task(log_answer_to_db(quiz, m, user_text))
+
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
