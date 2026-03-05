@@ -129,70 +129,53 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
-async def send_creative_results(chat_id, correct_ans, winners, group_scores, wrong_answers=None, is_public=False, mode="السرعة ⚡"):
-    """قالب ياسر المطور: يدعم الإذاعة العامة، الخاصة، السرعة، ووقت السؤال"""
-    
-    # تحديد شعار النظام
+ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡"):
+    """
+    قالب ياسر العالمي 2026: 
+    - يعلن عن بطل الجولة للجميع (حتى لو من مجموعة أخرى).
+    - يظهر ترتيب المجموعة الحالي لزيادة الحماس.
+    """
     mode_icon = "⚡" if "سرعة" in mode else "⏰"
     
-    # 1️⃣ الرأس الزخرفي
+    # 1️⃣ الرأس الملكي (ثابت للجميع)
     msg = "👑 <b>تـفـاصـيـل الـجـولـة الـمـلـكـيـة</b> 👑\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
-
-    # 2️⃣ الإجابة الصحيحة
     msg += f"🎯 الإجابة الصحيحة: <b>「 {correct_ans} 」</b>\n"
-    msg += f"⚙️ نظام المسابقة: <b>{mode} {mode_icon}</b>\n"
+    msg += f"⚙️ نظام المسابقة: <b>{mode} {mode_icon} {mode_icon}</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 3️⃣ قسم الأبطال (المتفوقين)
+    # 2️⃣ إعلان بطل الجولة (أول شخص أجاب في العالم)
     if winners:
+        # نأخذ أول شخص في قائمة الفائزين (الأسرع عالمياً)
+        top_winner = winners[0] 
+        time_info = f" ⏱ <code>{top_winner['time']}s</code>" if 'time' in top_winner else ""
+        
         msg += "🌟 <b>لائحة شرف الجولة</b> 🌟\n"
-        # ترتيب حسب السرعة
-        sorted_winners = sorted(winners, key=lambda x: x.get('time', 0))
-        for i, w in enumerate(sorted_winners, 1):
-            # تمييز المركز الأول في نظام السرعة
-            crown = "🥇" if i == 1 and mode_icon == "⚡" else "⭐️"
-            time_info = f" ⏱ <code>{w['time']}s</code>" if 'time' in w else ""
-            msg += f"{crown} ⇠ <b>{w['name']}</b>{time_info}\n"
+        msg += f"🥇 ⇠ <b>{top_winner['name']}</b> {time_info}\n"
+        
+        # إضافة لمسة ذكية: إذا كان الفائز من مجموعة أخرى، يذكر اسم مجموعته (اختياري)
+        # msg += f"🏘 من مجموعة: <code>{top_winner.get('group_name', 'مجموعة صديقة')}</code>\n"
     else:
         msg += "💤 <b>للأسف.. الوقت انتهى دون فائز!</b>\n"
     
-    msg += "━━━━━━━━━━━━━━━━━━\n"
+    msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
-    # 4️⃣ قسم الترتيب (ذكي: يفرق بين العام والخاص)
-    msg += "\n📊 <b>مـوقـف الـنـقـاط الـحـالـي:</b>\n"
+    # 3️⃣ موقف النقاط الحالي (الترتيب داخل المجموعة التي استلمت الرسالة)
+    msg += "📊 <b>مـوقـف الـنـقـاط الـحـالـي:</b>\n"
     
-    if is_public:
-        # --- [ إذاعة عامة: نظام المجموعات ] ---
-        # نجلب أعلى 3 مجموعات في المسابقة ككل لزيادة المنافسة
-        all_groups = []
-        for gid, players in group_scores.items():
-            if players:
-                total_pts = sum(p['points'] for p in players.values())
-                all_groups.append({'id': gid, 'points': total_pts})
-        
-        sorted_groups = sorted(all_groups, key=lambda x: x['points'], reverse=True)
-        
-        for i, g in enumerate(sorted_groups[:3]):
-            medals = ["🥇", "🥈", "🥉"]
-            msg += f"{medals[i]} <b>جروب: {g['id']}</b> ⇠ <code>{g['points']}</code> ن\n"
-        msg += "<i>بقية المجموعات مشعللة المنافسة.. 🔥</i>\n"
-    else:
-        # --- [ إذاعة خاصة: ترتيب أعضاء المجموعة ] ---
-        current_data = group_scores.get(chat_id, {})
-        sorted_players = sorted(current_data.values(), key=lambda x: x['points'], reverse=True)
-        
+    current_group_players = group_scores.get(chat_id, {})
+    if current_group_players:
+        # ترتيب أعضاء هذه المجموعة تحديداً
+        sorted_players = sorted(current_group_players.values(), key=lambda x: x['points'], reverse=True)
         medals = {0: "🥇", 1: "🥈", 2: "🥉"}
-        for i, p in enumerate(sorted_players[:5]):
+        for i, p in enumerate(sorted_players[:3]): # توب 3
             medal = medals.get(i, "👤")
             msg += f"{medal} <b>{p['name']}</b> ⇠ <code>{p['points']}</code> ن\n"
+    else:
+        msg += "<i>لا توجد نقاط مسجلة في مجموعتكم بعد..</i>\n"
 
-    # 5️⃣ قسم الإجابات الخاطئة (اختياري وبسيط)
-    if wrong_answers:
-        msg += "\n🛑 <b>محاولات لم تصب:</b> "
-        msg += " | ".join([f"<s>{name}</s>" for name in wrong_answers[:5]])
-
-    msg += "\n\n🚀 <i>السؤال التالي يتحضر الآن..</i>"
+    # 4️⃣ التذييل
+    msg += "\n🚀 <i>السؤال التالي يتحضر الآن..</i>"
 
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
     
