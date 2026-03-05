@@ -2169,19 +2169,41 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
                     break
                 
                 await asyncio.sleep(0.4) # فحص سريع كل 0.4 ثانية
-            # 6️⃣ إغلاق السؤال وتحديث النقاط (يجب أن يظل داخل الـ for)
+            # 6️⃣ إغلاق السؤال وتحديث النقاط (داخل حلقة الأسئلة)
             res_tasks = []
+            
+            # 🟢 [إضافة] نجمع كل الفائزين من كل المجموعات في قائمة واحدة "عالمية"
+            global_winners = []
+            for cid in all_chats:
+                global_winners.extend(active_quizzes.get(cid, {}).get('winners', []))
+            
+            # ترتيب الفائزين عالمياً حسب السرعة (الأسرع هو الأول)
+            global_winners = sorted(global_winners, key=lambda x: x.get('time', 0))
+
             for cid in all_chats:
                 if cid in active_quizzes:
                     active_quizzes[cid]['active'] = False
                 
-                current_winners = active_quizzes.get(cid, {}).get('winners', [])
-                for w in current_winners:
+                # تحديث نقاط الأعضاء المحليين في هذه المجموعة
+                # (الفائز سيأخذ النقاط فقط في مجموعته)
+                local_winners = active_quizzes.get(cid, {}).get('winners', [])
+                for w in local_winners:
                     uid = w['id']
                     if uid not in group_scores[cid]:
                         group_scores[cid][uid] = {"name": w['name'], "points": 0}
                     group_scores[cid][uid]['points'] += 10
-                res_tasks.append(send_creative_results(cid, ans, current_winners, group_scores[cid]))
+                
+                # 🔵 [التعديل الجوهري] نرسل global_winners بدلاً من local_winners
+                # لكي يظهر اسم بطل الجولة للكل في القالب الجديد
+                res_tasks.append(send_creative_results(
+                    chat_id=cid, 
+                    correct_ans=ans, 
+                    winners=global_winners, # 👈 هنا السر! الفائز العالمي يظهر للجميع
+                    group_scores=group_scores, # نرسل القاموس كامل للترتيب
+                    is_public=True,
+                    mode=quiz_data.get('mode', 'السرعة ⚡')
+                ))
+            
             await asyncio.gather(*res_tasks, return_exceptions=True)
             
             # (اختياري) عداد تنازلي هنا للسؤال التالي
