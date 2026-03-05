@@ -2080,6 +2080,21 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
 
     if not all_chats: return
 
+    # 🔥 [ إضافة قاموس الأسماء هنا ] 🔥
+    group_names_map = {}
+    try:
+        # جلب بيانات المجموعات المشاركة دفعة واحدة لسرعة الأداء
+        res = supabase.table("groups_hub").select("group_id, group_name").in_("group_id", all_chats).execute()
+        # تحويل النتيجة إلى قاموس يسهل الوصول إليه: {ID: Name}
+        group_names_map = {str(item['group_id']): item['group_name'] for item in res.data}
+    except Exception as e:
+        logging.error(f"⚠️ Error fetching group names: {e}")
+    
+    # تأمين وجود اسم لكل آيدي حتى لو فشل الجلب
+    for cid in all_chats:
+        if str(cid) not in group_names_map:
+            group_names_map[str(cid)] = f"جروب {cid}"
+
     # --- [ ب ] منع الطلقة المزدوجة (القفل العالمي) ---
     for cid in all_chats:
         if cid in active_broadcasts:
