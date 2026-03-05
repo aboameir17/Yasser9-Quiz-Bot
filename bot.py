@@ -2429,68 +2429,59 @@ async def unified_answer_checker(m: types.Message):
     uid = m.from_user.id
     user_text = m.text.strip() if m.text else ""
 
-    # 1️⃣ التحقق من وجود أي مسابقة نشطة (أمان أول)
-    if cid not in active_quizzes or not active_quizzes[cid].get('active'):
-        return
-
-    quiz = active_quizzes[cid]
-    # استخدام .get للحماية من خطأ string indices
-    correct_ans = str(quiz.get('ans', '')).strip()
-
-    # 2️⃣ ميزان العدل: فحص الإجابة
-    if not is_answer_correct(user_text, correct_ans):
-        return
-
-    # 3️⃣ الفحص الأمني: هل اللاعب فاز مسبقاً في هذا السؤال؟
-    if any(w['id'] == uid for w in quiz.get('winners', [])):
-        return
-
-    # 🚀 [تمييز المسار: عام أو خاص]
-    is_public = quiz.get('is_public', False)
-
-    if is_public:
-        # ==========================================
-        # 🌐 مسار الإذاعة العامة (مكافحة الغش عابرة للمجموعات)
-        # ==========================================
-        p_ids = quiz.get('participants_ids', [cid])
+    # 1️⃣ أولاً: التحقق من "الإذاعة العالمية"
+    if cid in active_quizzes and active_quizzes[cid].get('active'):
+        # هنا السر: نستخدم المرجع المباشر للقاموس
+        correct_ans = str(active_quizzes[cid]['ans']).strip()
         
-        # 🔥 فحص الغش: هل أجاب في مجموعة أخرى؟
-        is_already_winner_globally = False
-        for p_cid in p_ids:
-            if p_cid in active_quizzes:
-                if any(w['id'] == uid for w in active_quizzes[p_cid].get('winners', [])):
-                    is_already_winner_globally = True
-                    break
+        if is_answer_correct(user_text, correct_ans):
+            # التأكد أن المستخدم لم يفز مسبقاً
+            if not any(w['id'] == uid for w in active_quizzes[cid].get('winners', [])):
+                
+                # 🛑 [أمر الإغلاق الفوري] - أهم سطر للسرعة
+                if active_quizzes[cid].get('mode') == 'السرعة ⚡':
+                    p_ids = active_quizzes[cid].get('participants_ids', [cid])
+                    for p_cid in p_ids:
+                        if p_cid in active_quizzes:
+                            active_quizzes[p_cid]['active'] = False # إغلاق الأصل وليس النسخة
+                    logging.info("⚡ تم إغلاق السؤال عالمياً")
+
+                # الآن كمل باقي المهام (سوبابيس والرد)
+                db_id = active_quizzes[cid].get('db_quiz_id')
+                if db_id:
+                    def save():
+                        try:
+                            supabase.table("answers_log").insert({
+                                "quiz_id": db_id,
+                                "question_no": active_quizzes[cid].get('current_index', 1),
+                                "chat_id": cid, "user_id": uid, "user_name": m.from_user.first_name,
+                                "answer_text": user_text, "points_earned": 10
+                            }).execute()
+                        except Exception as e: logging.error(f"❌ سوبابيس: {e}")
+                    asyncio.create_task(asyncio.to_thread(save))
+
+                # تسجيل الفائز في الرام
+                active_quizzes[cid]['winners'].append({"name": m.from_user.first_name, "id": uid})
+
+                # 🔵 [إعلان الفوز]
+                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nإجابتك صحيحة وتم تسجيل نقاطك عالمياً. 🚀", parse_mode="HTML")    
+                
+                return
+    # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
+    elif cid in active_quizzes and active_quizzes[cid].get('active'):
+        quiz_p = active_quizzes[cid]
+        correct_ans = str(quiz_p['ans']).strip()
         
-        if is_already_winner_globally:
-            return logging.info(f"🚫 منع غش: {m.from_user.first_name} حاول التكرار.")
-
-        # 🛑 نظام الإغلاق العالمي (وضع السرعة)
-        if quiz.get('mode') == 'السرعة ⚡':
-            for p_cid in p_ids:
-                if p_cid in active_quizzes:
-                    active_quizzes[p_cid]['active'] = False
-            await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")
-        else:
-            await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>\nتم تسجيل نقاطك في الإذاعة العامة. 🏆", parse_mode="HTML")
-
-    else:
-        # ==========================================
-        # 📍 مسار المسابقات الخاصة (نظام داخلي معزول)
-        # ==========================================
-        if quiz.get('mode') == 'السرعة ⚡':
-            quiz['active'] = False
-            await m.reply(f"🎯 <b>أحسنت يا {m.from_user.first_name}!</b>\nأول إجابة صحيحة وحسمت النقطة. 🥇", parse_mode="HTML")
-        else:
-            await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>", parse_mode="HTML")
-
-    # 4️⃣ العمليات المشتركة (تسجيل الفائز وحفظ السجلات)
-    quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
-    
-    # حفظ الإجابة في سوبابيس (بدون تعطيل الوقت)
-    db_id = quiz.get('db_quiz_id')
-    if db_id:
-        asyncio.create_task(log_answer_to_db(quiz, m, user_text))
+        if is_answer_correct(user_text, correct_ans):
+            if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
+                quiz_p['winners'].append({"name": m.from_user.first_name, "id": uid})
+                
+                if quiz_p.get('mode') == 'السرعة ⚡':
+                    quiz_p['active'] = False
+                
+                # إعلان الفوز للمسابقات الخاصة
+                await m.reply(f"✅ كفو! إجابة صحيحة.")
+                return
 
 # ==========================================
 # ==========================================
