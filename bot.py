@@ -129,7 +129,7 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # ==========================================
 # --- [ 2. بداية الدوال المساعدة قالب الاجابات  ] ---
 # ==========================================
- async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡"):
+async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡"):
     """
     قالب ياسر العالمي 2026: 
     - يعلن عن بطل الجولة للجميع (حتى لو من مجموعة أخرى).
