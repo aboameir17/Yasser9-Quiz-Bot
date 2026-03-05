@@ -2150,9 +2150,13 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
 
         # --- [ د ] دورة البث الموحدة ---
         for i, q in enumerate(selected_questions):
+            # 🔥 [الإضافة الجوهرية هنا] 🔥
+            # تصفير قائمة الممنوعين لهذا السؤال رقم (i+1)
+            answered_users_global[i + 1] = [] 
+
             ans = str(q.get('correct_answer') or q.get('answer_text') or "").strip()
             cat_name = q.get('category') or "عام"
-
+            
             # 🔵 [الخطوة 2] تحديث سوبابيس
             if current_quiz_db_id:
                 try:
