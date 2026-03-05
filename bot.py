@@ -650,37 +650,6 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
     except Exception as e:
         logging.error(f"🚨 General Broadcast Error: {e}")
 
-def is_already_winner_global(uid, participants_ids):
-    """فحص هل اللاعب فاز في أي مجموعة أخرى مرتبطة بالإذاعة"""
-    for p_cid in participants_ids:
-        if p_cid in active_quizzes:
-            if any(w['id'] == uid for w in active_quizzes[p_cid].get('winners', [])):
-                return True
-    return False
-
-async def close_quiz_globally(participants_ids):
-    """إغلاق السؤال في جميع المجموعات المرتبطة (لوضع السرعة)"""
-    for p_cid in participants_ids:
-        if p_cid in active_quizzes:
-            active_quizzes[p_cid]['active'] = False
-
-async def log_answer_to_supabase(quiz, m, user_text):
-    """حفظ الإجابة في قاعدة البيانات"""
-    db_id = quiz.get('db_quiz_id')
-    if db_id:
-        try:
-            supabase.table("answers_log").insert({
-                "quiz_id": db_id,
-                "question_no": quiz.get('current_index', 1),
-                "chat_id": m.chat.id, 
-                "user_id": m.from_user.id, 
-                "user_name": m.from_user.first_name,
-                "answer_text": user_text, 
-                "is_correct": True,
-                "points_earned": 10
-            }).execute()
-        except Exception as e:
-            logging.error(f"❌ خطأ حفظ النتيجة: {e}")
 # 4. حالات النظام (FSM States)
 # ==========================================
 class Form(StatesGroup):
@@ -690,6 +659,7 @@ class Form(StatesGroup):
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
     waiting_for_quiz_name = State()
+
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
