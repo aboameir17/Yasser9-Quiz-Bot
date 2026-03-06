@@ -2237,20 +2237,20 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
                 if isinstance(m, types.Message):
                     messages_to_delete[all_chats[idx]].append(m.message_id)
 
-            # 5️⃣ محرك الانتظار الذكي (نظام الحساس العالمي)
+            # 5️⃣ محرك الانتظار الذكي (النسخة الصاروخية 🚀)
             t_limit = int(quiz_data.get('time_limit', 15))
             start_wait = time.time()
 
             while time.time() - start_wait < t_limit:
-                # فحص الحالة: هل لا يزال هناك أي مجموعة "نشطة"؟
-                # استخدمنا 'all' أو 'any' للتأكد من حالة الجميع
+                # فحص هل تم الحسم من أي مجموعة؟
                 still_active = any(active_quizzes.get(c, {}).get('active', False) for c in all_chats)
                 
                 if not still_active:
-                    logging.info("⚡ تم كسر الانتظار: الرادار أغلق جميع المجموعات")
+                    logging.info("⚡ الرادار أعطى إشارة إغلاق.. الانتقال للنتائج فوراً.")
                     break
                 
-                await asyncio.sleep(0.1) # فحص سريع كل 0.4 ثانية
+                # تقليل النوم لـ 0.05 لضمان حساسية عالية جداً
+                await asyncio.sleep(0.05)
             # 6️⃣ إغلاق السؤال وتحديث النقاط (داخل حلقة الأسئلة)
             res_tasks = []
             
@@ -2426,32 +2426,27 @@ async def unified_answer_checker(m: types.Message):
             
             if is_public:
                 # ==========================================
-                # 🌐 مسار الإذاعة العامة (مكافحة الغش + سرعة ⚡)
+                # 🌐 مسار الإذاعة العامة (مكافحة الغش والحسم الفوري)
                 # ==========================================
                 p_ids = quiz.get('participants_ids', [cid])
                 
                 # 1. منع التكرار العابر للمجموعات
                 if any(any(w['id'] == uid for w in active_quizzes[pc].get('winners', [])) for pc in p_ids if pc in active_quizzes):
-                    return logging.info(f"🚫 منع تكرار عالمي: {m.from_user.first_name}")
+                    return logging.info(f"🚫 منع تكرار: {m.from_user.first_name}")
 
-                # 2. إغلاق عالمي فوري إذا كان الوضع "سرعة"
-                # نغلق أولاً ثم نسجل الفائز لضمان توقف المحرك فوراً
+                # 2. الحسم العالمي (إذا كان وضع سرعة)
                 if quiz.get('mode') == 'السرعة ⚡':
                     for p_cid in p_ids:
                         if p_cid in active_quizzes:
                             active_quizzes[p_cid]['active'] = False
-                    logging.info(f"⚡ إغلاق عالمي: {m.from_user.first_name} حسم الجولة.")
 
-                # 3. تسجيل الفائز في المجموعة الحالية
-                # نستخدم .setdefault لضمان عدم حدوث Error إذا كانت القائمة غير موجودة
+                # 3. تسجيل الفائز وإرسال التهنئة
                 quiz.setdefault('winners', []).append({"name": m.from_user.first_name, "id": uid})
-                
-                # 4. الرد وحفظ البيانات
                 await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")
                 
+                # 4. الحفظ في سوبابيس
                 db_id = quiz.get('db_quiz_id')
-                if db_id:
-                    asyncio.create_task(log_answer_to_db(quiz, m, user_text))
+                if db_id: asyncio.create_task(log_answer_to_db(quiz, m, user_text))
                 return
 
             else:
