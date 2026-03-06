@@ -2477,16 +2477,15 @@ async def unified_answer_checker(m: types.Message):
 # ==========================================
 # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
 elif cid in active_quizzes and active_quizzes[cid].get('active'):
-     quiz_p = active_quizzes[cid]
-     correct_ans = str(quiz_p.get('ans', '')).strip()
+    quiz_p = active_quizzes[cid]
+    correct_ans = str(quiz_p.get('ans', '')).strip()
         
-        if is_answer_correct(user_text, correct_ans):
-            if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
+    if is_answer_correct(user_text, correct_ans):
+        if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
                 # تسجيل الفائز في الذاكرة المشتركة التي يراها المحرك
-                quiz_p.setdefault('winners', []).append({"name": m.from_user.first_name, "id": uid})
-                
-                if quiz_p.get('mode') == 'السرعة ⚡':
-                    quiz_p['active'] = False
+               quiz_p.setdefault('winners', []).append({"name": m.from_user.first_name, "id": uid})
+            if quiz_p.get('mode') == 'السرعة ⚡':
+               quiz_p['active'] = False
                 return
             
 # ==========================================
