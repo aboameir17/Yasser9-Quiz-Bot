@@ -56,42 +56,6 @@ answered_users_global = {}
 # 4. محركات العرض والقوالب (Display Engines) - النسخة المصلحة
 # ==========================================
 
-# [2] دالة إعلان تفاصيل المسابقة (المصلحة)
-async def announce_quiz_type(chat_id, quiz_data, engine_type):
-    """إعلان تفاصيل المسابقة المنطلقة (خاصة/عامة)"""
-    source_map = {
-        "bot": "أسئلة البوت الذكية 🤖", 
-        "user": "أسئلة المستخدم الخاصة 👤"
-    }
-    source_text = source_map.get(engine_type, "قاعدة بيانات خاصة 🔒")
-    
-    # جلب البيانات مع وضع قيم افتراضية للأمان
-    q_name = quiz_data.get('quiz_name', 'تحدي جديد')
-    q_count = quiz_data.get('questions_count', 10)
-    q_time = quiz_data.get('time_limit', 15)
-    
-    # 🛠️ تحديد النطاق بدقة
-    is_pub = quiz_data.get('is_public', False)
-    q_scope = "إذاعة عامة 🌐" if is_pub else "مسابقة داخلية 📍"
-    
-    announcement = (
-        f"📊 **تفاصيل المسابقة المنطلقة:**\n"
-        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n"
-        f"🏆 الاسم: **{q_name}**\n"
-        f"📁 المصدر: `{source_text}`\n"
-        f"📡 النطاق: **{q_scope}**\n"
-        f"🔢 الأسئلة: `{q_count}` سؤال\n"
-        f"⏳ الوقت: `{q_time} ثانية لكل سؤال`\n"
-        f"❃┅┅┅┄┄┄┈•❃•┈┄┄┄┅┅┅❃\n\n"
-        f"⏳ **استعدوا.. الانطلاقة بعد 3 ثواني!**"
-    )
-    
-    try:
-        msg = await bot.send_message(chat_id, announcement, parse_mode="Markdown")
-        await asyncio.sleep(3) 
-        await msg.delete() # حذف رسالة الإعلان لبدء السؤال الأول في شاشة نظيفة
-    except Exception as e:
-        logging.error(f"Error in announcement: {e}")
 # [3] دالة قالب السؤال (المصلحة)
 async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
     """
@@ -290,7 +254,48 @@ async def send_final_results(chat_id, scores, total_q, is_public=False, group_na
         try:
             return await bot.send_message(chat_id, "🏁 <b>انتهت المسابقة!</b>\n(حدث خطأ في عرض التنسيق الفني)")
         except: pass
-    # [اختياري] هنا يمكنك استدعاء دالة لترحيل النقاط إلى SQL (groups_hub) إذا أردت حفظها للأبد
+ 
+# ==========================================
+# ==========================================
+async def send_creative_results2(chat_id, correct_ans, winners, overall_scores):
+    """تصميم ياسر المطور: دمج الفائزين والترتيب في رسالة واحدة"""
+    msg =  "━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"✅ الإجابة الصحيحة: <b>{correct_ans}</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    if winners:
+        msg += "━━━━ المتفوقون ✅ ━━━━\n"
+        for i, w in enumerate(winners, 1):
+            msg += f"{i}- {w['name']} (+10)\n"
+    else:
+        msg += "❌ لم ينجح أحد في الإجابة على هذا السؤال\n"
+    
+    leaderboard = sorted(overall_scores.values(), key=lambda x: x['points'], reverse=True)
+    msg += "\n━━ 🏆 الترتيب  ━━\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for i, player in enumerate(leaderboard[:3]):
+        medal = medals[i] if i < 3 else "👤"
+        msg += f"{medal} {player['name']} — {player['points']}\n"
+    
+    await bot.send_message(chat_id, msg, parse_mode="HTML")
+    
+async def send_final_results2(chat_id, overall_scores, correct_count):
+    """تصميم ياسر لرسالة ختام المسابقة"""
+    msg =  "━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "🏁 <b>انـتـهـت الـمـسـابـقـة بنجاح!</b> 🏁\n"
+    msg += "شكرًا لكل من شارك وأمتعنا بمنافسته. 🌹\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg += "━━━━ 🥇 المراكز الأولى 🥇 ━━━━\n\n"
+    sorted_players = sorted(overall_scores.values(), key=lambda x: x['points'], reverse=True)
+    medals = ["🥇", "🥈", "🥉"]
+    for i, player in enumerate(sorted_players[:3]):
+        msg += f"{medals[i]} المركز {'الأول' if i==0 else 'الثاني' if i==1 else 'الثالث'}: <b>{player['name']}</b> - [🏆 {player['points']}]\n"
+    msg += "\n━━━━━━━━━━━━━━━━━━━━━\n\n━━━━ 📊 إحصائيات التفاعل 📊 ━━━━\n"
+    msg += "تهانينا للفائزين وحظاً أوفر لمن لم يحالفه الحظ! ❤️"
+    await bot.send_message(chat_id, msg, parse_mode="HTML")
+
+# ==========================================
+   # [اختياري] هنا يمكنك استدعاء دالة لترحيل النقاط إلى SQL (groups_hub) إذا أردت حفظها للأبد
 async def sync_points_to_db(group_scores, is_public=False):
     """
     مهمة ياسر الكبرى: ترحيل نقاط الجولة الحالية إلى جدول groups_hub
@@ -372,8 +377,6 @@ def get_categories_kb(user_id):
     kb.add(InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_main_{user_id}"))
     
     return kb
-
-
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
@@ -424,7 +427,6 @@ def get_setup_quiz_kb(user_id):
         InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
     )
     return kb
-
 # ==========================================
 # الدوال المساعدة المحدثة (حماية + أسماء حقيقية)
 # ==========================================
@@ -540,7 +542,6 @@ async def render_final_settings_panel(message, data, owner_id):
 # ==========================================
 # 3. دوال الفحص الأمني والمحركات (Security Helpers & Engines)
 # ==========================================
-
 async def get_group_status(chat_id):
     """فحص حالة تفعيل المجموعة في الجدول الموحد الجديد groups_hub"""
     try:
@@ -550,6 +551,7 @@ async def get_group_status(chat_id):
         logging.error(f"Error checking group status: {e}")
         return "error"
 
+# ==========================================
 async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id: int):
     try:
         # 1. جلب بيانات المسابقة الأصلية
@@ -586,9 +588,7 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
 
         for emoji in timer_emojis:
             text = (
-                f"📢 **إعلان: مسابقة عالمية منطلقة الآن!** 🌐\n"
-                f"━━━━━━━━━━━━━━\n"
-                f"⏰ {emoji} ™️\n"
+                f"**إعلان: مسابقة عامه منطلقة !** ™️ {emoji} \n"
                 f"━━━━━━━━━━━━━━\n"
                 f"🏆 المسابقة: **{quiz_name}**\n"
                 f"📂 القسم: **{cat_info}**\n"
@@ -659,7 +659,6 @@ class Form(StatesGroup):
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
     waiting_for_quiz_name = State()
-
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
@@ -711,7 +710,6 @@ async def cancel_quiz_handler(c: types.CallbackQuery):
     cancelled_groups.add(chat_id)
     await c.message.edit_text("🚫 **تم إلغاء المسابقة في هذه المجموعة.**")
     await c.answer("تم الإلغاء بنجاح", show_alert=True)
-    
 # ==========================================
 # 6. أمر التفعيل (Request Activation)
 # ==========================================
@@ -2045,35 +2043,18 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         if h_msg:
             asyncio.create_task(delete_after(h_msg, 0))
 
-        # 5. إنهاء السؤال وحساب النقاط (تجهيز للنسخة الملكية)
+        # 5. إنهاء السؤال وحساب النقاط
         if chat_id in active_quizzes:
             active_quizzes[chat_id]['active'] = False
-            winners_list = active_quizzes[chat_id].get('winners', [])
-            
-            for w in winners_list:
+            for w in active_quizzes[chat_id]['winners']:
                 uid = w['id']
                 if uid not in overall_scores: 
                     overall_scores[uid] = {"name": w['name'], "points": 0}
                 overall_scores[uid]['points'] += 10
         
-            # 🛠️ [تحويل البيانات لتناسب القالب الملكي]
-            # نحول overall_scores إلى هيكلة group_scores (مجموعة واحدة فقط هنا)
-            current_group_scores = {str(chat_id): overall_scores}
-            
-            # 6. عرض لوحة المبدعين اللحظية (القالب الملكي)
-            try:
-                await send_creative_results(
-                    chat_id=chat_id, 
-                    correct_ans=ans, 
-                    winners=winners_list, 
-                    group_scores=current_group_scores, # التعديل الجوهري هنا
-                    is_public=False, 
-                    mode=quiz_data.get('mode', 'السرعة ⚡'),
-                    group_names={str(chat_id): "المسابقة الخاصة"}
-                )
-            except Exception as e:
-                logging.error(f"❌ خطأ في عرض القالب الملكي: {e}")
-                
+            # 6. عرض لوحة المبدعين اللحظية
+            await send_creative_results2(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
+        
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
@@ -2097,7 +2078,8 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         else:
             await asyncio.sleep(2)
     # 7. إعلان لوحة الشرف النهائية
-    await send_final_results(chat_id, overall_scores, len(questions))
+    await send_final_results2(chat_id, overall_scores, len(questions))
+# ==========================================
 # ==========================================
 
 # 1️⃣ صمام الأمان العالمي (خارج الدالة لمنع الطلقة المزدوجة)
