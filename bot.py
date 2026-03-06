@@ -2045,18 +2045,35 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         if h_msg:
             asyncio.create_task(delete_after(h_msg, 0))
 
-        # 5. إنهاء السؤال وحساب النقاط
+        # 5. إنهاء السؤال وحساب النقاط (تجهيز للنسخة الملكية)
         if chat_id in active_quizzes:
             active_quizzes[chat_id]['active'] = False
-            for w in active_quizzes[chat_id]['winners']:
+            winners_list = active_quizzes[chat_id].get('winners', [])
+            
+            for w in winners_list:
                 uid = w['id']
                 if uid not in overall_scores: 
                     overall_scores[uid] = {"name": w['name'], "points": 0}
                 overall_scores[uid]['points'] += 10
         
-            # 6. عرض لوحة المبدعين اللحظية
-            await send_creative_results(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
-        
+            # 🛠️ [تحويل البيانات لتناسب القالب الملكي]
+            # نحول overall_scores إلى هيكلة group_scores (مجموعة واحدة فقط هنا)
+            current_group_scores = {str(chat_id): overall_scores}
+            
+            # 6. عرض لوحة المبدعين اللحظية (القالب الملكي)
+            try:
+                await send_creative_results(
+                    chat_id=chat_id, 
+                    correct_ans=ans, 
+                    winners=winners_list, 
+                    group_scores=current_group_scores, # التعديل الجوهري هنا
+                    is_public=False, 
+                    mode=quiz_data.get('mode', 'السرعة ⚡'),
+                    group_names={str(chat_id): "المسابقة الخاصة"}
+                )
+            except Exception as e:
+                logging.error(f"❌ خطأ في عرض القالب الملكي: {e}")
+                
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
