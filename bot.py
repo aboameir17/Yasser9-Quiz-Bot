@@ -2466,19 +2466,38 @@ async def unified_answer_checker(m: types.Message):
                 # 🔵 رد الفوز
                 await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")    
                 return
-    # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
-    elif cid in active_quizzes and active_quizzes[cid].get('active'):
-        quiz_p = active_quizzes[cid]
-        correct_ans = str(quiz_p['ans']).strip()
-        
-        if is_answer_correct(user_text, correct_ans):
-            if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
-                quiz_p['winners'].append({"name": m.from_user.first_name, "id": uid})
-                
-                if quiz_p.get('mode') == 'السرعة ⚡':
-                    quiz_p['active'] = False
-                return
-           
+    # 2️⃣ التحقق من المسابقات الخاصة
+elif cid in active_quizzes:
+
+    quiz_p = active_quizzes[cid]
+
+    if not quiz_p.get('active'):
+        return
+
+    # التأكد أنها مسابقة خاصة
+    if quiz_p.get('type') != "private":
+        return
+
+    correct_ans = str(quiz_p['ans']).strip()
+
+    if is_answer_correct(user_text, correct_ans):
+
+        if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
+
+            quiz_p['winners'].append({
+                "name": m.from_user.first_name,
+                "id": uid
+            })
+
+            if quiz_p.get('mode') == 'السرعة ⚡':
+                quiz_p['active'] = False
+
+            await m.reply(
+                f"🎯 أحسنت {m.from_user.first_name}!",
+                parse_mode="HTML"
+            )
+
+            return
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
