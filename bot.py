@@ -2043,18 +2043,25 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         if h_msg:
             asyncio.create_task(delete_after(h_msg, 0))
 
-        # 5. إنهاء السؤال وحساب النقاط
+        # 5. إنهاء السؤال وحساب النقاط (التعديل الجوهري 🔥)
         if chat_id in active_quizzes:
+            # نغلق السؤال أولاً لمنع استقبال إجابات متأخرة
             active_quizzes[chat_id]['active'] = False
-            for w in active_quizzes[chat_id]['winners']:
+            
+            # نجلب الفائزين الذين سجلهم "الرادار" في active_quizzes
+            current_winners = active_quizzes[chat_id].get('winners', [])
+            
+            # 🔥 تحديث النقاط في overall_scores بناءً على الفائزين في الرادار
+            for w in current_winners:
                 uid = w['id']
-                if uid not in overall_scores: 
+                if uid not in overall_scores:
                     overall_scores[uid] = {"name": w['name'], "points": 0}
+                
+                # إضافة النقاط (تأكد أن الإضافة تتم مرة واحدة فقط لكل سؤال)
                 overall_scores[uid]['points'] += 10
         
-            # 6. عرض لوحة المبدعين اللحظية
-            await send_creative_results2(chat_id, ans, active_quizzes[chat_id]['winners'], overall_scores)
-        
+            # 6. عرض لوحة المبدعين (الآن overall_scores مليئة بالبيانات!)
+            await send_creative_results2(chat_id, ans, current_winners, overall_scores)
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
@@ -2466,33 +2473,28 @@ async def unified_answer_checker(m: types.Message):
                 # 🔵 رد الفوز
                 await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")    
                 return
+
 # ==========================================
 # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
-    elif cid in active_quizzes and active_quizzes[cid].get('active'):
+elif cid in active_quizzes and active_quizzes[cid].get('active'):
         quiz_p = active_quizzes[cid]
         correct_ans = str(quiz_p.get('ans', '')).strip()
         
         if is_answer_correct(user_text, correct_ans):
-            # التأكد أن اللاعب لم يفز مسبقاً في هذا السؤال
             if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
-                # 1. تسجيل الفائز في القائمة
+                # تسجيل الفائز في الذاكرة المشتركة التي يراها المحرك
                 quiz_p.setdefault('winners', []).append({"name": m.from_user.first_name, "id": uid})
                 
-                # 2. تحديث النقاط (إذا كنت تستخدم قاموس overall_scores في المحرك)
-                # ملاحظة: إذا كان المحرك هو من يعرض النتائج في نهاية الوقت، فلا داعي للاستدعاء هنا.
-                # أما إذا أردت ظهور النتيجة فور الإجابة في وضع السرعة:
                 if quiz_p.get('mode') == 'السرعة ⚡':
                     quiz_p['active'] = False
-                    # هنا نستدعي القالب رقم 2 فوراً ليعلن الفائز
-                    # (تأكد من تمرير المتغيرات المطلوبة لدالتك الجديدة)
-                    # asyncio.create_task(send_creative_results2(cid, correct_ans, quiz_p['winners'], overall_scores))
-                
-                return # الخروج بعد معالجة الإجابة الصحيحة
+                return
+            
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
 class AdminStates(StatesGroup):
     waiting_for_new_token = State()
     waiting_for_broadcast = State()
+
 # =========================================
 #          👑 غرفة عمليات المطور 👑
 # =========================================
