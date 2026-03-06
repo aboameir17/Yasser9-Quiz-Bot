@@ -2461,22 +2461,31 @@ async def unified_answer_checker(m: types.Message):
                 
                 asyncio.create_task(asyncio.to_thread(save_to_db))
 
-            # تسجيل الفائز في الذاكرة (للمجموعة الحالية)
-            quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
+            # تسجيل الفائز في الذاكرة المؤقتة للمجموعة
+                quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
 
-            # 🔵 رد الفوز
-            if quiz.get('mode') == 'السرعة ⚡':
-                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")
-            else:
-                await m.reply(f"✅ <b>إجابة صحيحة يا {m.from_user.first_name}!</b>\nتم تسجيل نقاطك في بنك الإذاعة العالمية. 🏆", parse_mode="HTML")
-            return
+                # 🔵 رد الفوز
+                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")    
+                return
+    # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
+    elif cid in active_quizzes and active_quizzes[cid].get('active'):
+        quiz_p = active_quizzes[cid]
+        correct_ans = str(quiz_p['ans']).strip()
+        
+        if is_answer_correct(user_text, correct_ans):
+            if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
+                quiz_p['winners'].append({"name": m.from_user.first_name, "id": uid})
+                
+                if quiz_p.get('mode') == 'السرعة ⚡':
+                    quiz_p['active'] = False
+                return
+           
 # ==========================================
 # ==========================================
 # --- [ إعداد حالات الإدارة ] ---
 class AdminStates(StatesGroup):
     waiting_for_new_token = State()
     waiting_for_broadcast = State()
-  
 # =========================================
 #          👑 غرفة عمليات المطور 👑
 # =========================================
