@@ -2477,8 +2477,8 @@ async def unified_answer_checker(m: types.Message):
 # ==========================================
 # 2️⃣ ثانياً: التحقق من "المسابقات الخاصة"
 elif cid in active_quizzes and active_quizzes[cid].get('active'):
-        quiz_p = active_quizzes[cid]
-        correct_ans = str(quiz_p.get('ans', '')).strip()
+     quiz_p = active_quizzes[cid]
+     correct_ans = str(quiz_p.get('ans', '')).strip()
         
         if is_answer_correct(user_text, correct_ans):
             if not any(w['id'] == uid for w in quiz_p.get('winners', [])):
