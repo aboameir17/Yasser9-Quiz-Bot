@@ -174,6 +174,7 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
     msg += "\n🔥 <i>استعد.. السؤال التالي في الطريق!</i>"
 
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
+
 async def send_broadcast_final_results(chat_id, scores, total_q, group_names=None):
     """
     🏆 قالب ياسر الملكي للإذاعة العالمية (النسخة النهائية V7)
