@@ -1827,21 +1827,25 @@ async def handle_secure_actions(c: types.CallbackQuery, state: FSMContext):
 
         elif c.data.startswith('confirm_del_'):
             quiz_id = data_parts[2]
+            # جعلنا زر التراجع يعود مباشرة للقائمة show_quizzes
             kb = InlineKeyboardMarkup().add(
                 InlineKeyboardButton("✅ نعم، احذف", callback_data=f"final_del_{quiz_id}_{user_id}"),
-                InlineKeyboardButton("🚫 تراجع", callback_data=f"manage_quiz_{quiz_id}_{user_id}")
+                InlineKeyboardButton("🚫 تراجع", callback_data=f"show_quizzes_{user_id}")
             )
             return await c.message.edit_text("⚠️ **هل أنت متأكد من الحذف؟**", reply_markup=kb)
 
         elif c.data.startswith('final_del_'):
             quiz_id = data_parts[2]
+            # 1. تنفيذ الحذف
             supabase.table("saved_quizzes").delete().eq("id", quiz_id).execute()
-            await c.answer("🗑️ تم الحذف", show_alert=True)
-            # إعادة عرض القائمة بعد الحذف
+            await c.answer("🗑️ تم الحذف بنجاح", show_alert=True)
+            
+            # 2. بدلاً من handle_secure_actions، نقوم بتغيير الداتا واستدعاء دالة العرض الأصلية
             c.data = f"show_quizzes_{user_id}"
-            return await handle_secure_actions(c, state)
-
-       # --- [ نظام تشغيل المسابقات: عامة أو خاصة ] ---
+            # استدعاء دالة عرض القائمة (تأكد من اسم الدالة لديك، غالباً هي show_my_quizzes)
+            return await show_my_quizzes(c)
+            
+        # --- [ نظام تشغيل المسابقات: عامة أو خاصة ] ---
         elif c.data.startswith('run_'):
             quiz_id = data_parts[1]
             user_id = data_parts[2]
