@@ -175,7 +175,7 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
 
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
   
-async def send_broadcast_final_results(chat_id, scores, total_q, group_names=None):
+async def send_final_results(chat_id, scores, total_q, group_names=None):
     """
     🏆 قالب ياسر للإذاعة العالمية (نسخة IQ الأبطال)
     - يعرض ترتيب المجموعات مع نسبة ذكاء بطل كل مجموعة.
