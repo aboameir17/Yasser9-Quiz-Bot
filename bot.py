@@ -342,61 +342,65 @@ async def send_final_results2(chat_id, overall_scores, correct_count):
     msg += "\n━━━━━━━━━━━━━━━━━━━\n\n━━ 📊 إحصائيات التفاعل 📊 ━━\n"
     msg += "تهانينا للفائزين وحظاً أوفر لمن لم يحالفه الحظ! ❤️"
     await bot.send_message(chat_id, msg, parse_mode="HTML")
-# ==========================================
-   # [اختياري] هنا يمكنك استدعاء دالة لترحيل النقاط إلى SQL (groups_hub) إذا أردت حفظها للأبد
-async def sync_points_to_global_db(group_scores, is_pub=False):
-    """
-    محرك ياسر المطور 2026: ترحيل النقاط من الذاكرة إلى البروفايل العالمي لللاعبين.
-    تقوم بتحديث (النقاط، المحفظة، عدد الإجابات الصحيحة، وتاريخ التحديث).
-    """
-    # نجمع كل اللاعبين من كل المجموعات في قائمة واحدة لتجنب تكرار العمليات
-    all_players = {}
+
     
+# [اختياري] هنا يمكنك استدعاء دالة لترحيل النقاط إلى SQL (groups_hub) إذا أردت حفظها للأبد
+
+async def sync_points_to_global_db(group_scores):
+    """
+    تحديث الجدول العالمي users_global_profile
+    يستخدم نظام UPSERT (تحديث إذا وجد، إدخال إذا لم يوجد)
+    """
+    # 1. تجميع كل النقاط من كافة المجموعات لتجنب الضغط على القاعدة
+    final_updates = {}
     for cid, players in group_scores.items():
         for uid, p_data in players.items():
-            if uid not in all_players:
-                all_players[uid] = {"name": p_data['name'], "points": 0, "correct_count": 0}
-            
-            # تجميع النقاط (Earned Points)
-            all_players[uid]['points'] += p_data['points']
-            # الإجابة الصحيحة الواحدة تعطي نقطة في عداد الإجابات
-            all_players[uid]['correct_count'] += p_data['points'] 
+            uid_int = int(uid)
+            if uid_int not in final_updates:
+                final_updates[uid_int] = {"name": p_data['name'], "round_points": 0}
+            final_updates[uid_int]["round_points"] += p_data['points']
 
-    for uid, data in all_players.items():
+    for uid, data in final_updates.items():
         try:
-            # 1. محاولة جلب بروفايل اللاعب
+            # 2. محاولة جلب السجل الحالي للاعب
             res = supabase.table("users_global_profile").select("*").eq("user_id", uid).execute()
             
             if res.data:
-                # 2. تحديث اللاعب الموجود (Update)
+                # --- [ حالة التحديث UPDATE ] ---
                 current = res.data[0]
-                new_points = (current.get('total_points') or 0) + data['points']
-                new_wallet = (current.get('wallet') or 0) + data['points'] # المحفظة تزيد مع النقاط
-                new_correct = (current.get('correct_answers_count') or 0) + data['correct_count']
                 
-                supabase.table("users_global_profile").update({
+                # تحديث القيم التراكمية
+                upd_data = {
                     "user_name": data['name'],
-                    "total_points": new_points,
-                    "wallet": new_wallet,
-                    "correct_answers_count": new_correct,
-                    "last_update": "now()"
-                }).eq("user_id", uid).execute()
+                    "total_points": (current.get('total_points') or 0) + data['round_points'],
+                    "wallet": (current.get('wallet') or 0) + data['round_points'],
+                    "correct_answers_count": (current.get('correct_answers_count') or 0) + (1 if data['round_points'] > 0 else 0),
+                    "last_update": datetime.now().isoformat()
+                }
                 
+                # تنفيذ التحديث
+                supabase.table("users_global_profile").update(upd_data).eq("user_id", uid).execute()
+                logging.info(f"✅ تم تحديث بروفايل: {data['name']} (ID: {uid})")
+
             else:
-                # 3. إنشاء بروفايل جديد إذا كان اللاعب يلعب لأول مرة (Insert)
-                supabase.table("users_global_profile").insert({
+                # --- [ حالة الإدخال الأول مرة INSERT ] ---
+                # ملاحظة: لا نرسل bank_account لأنه serial يتولد تلقائياً
+                new_user = {
                     "user_id": uid,
                     "user_name": data['name'],
-                    "total_points": data['points'],
-                    "wallet": data['points'],
-                    "correct_answers_count": data['correct_count'],
+                    "total_points": data['round_points'],
+                    "wallet": data['round_points'],
+                    "correct_answers_count": 1 if data['round_points'] > 0 else 0,
                     "specialty_title": "هاوي",
                     "educational_rank": "طالب",
-                    "last_update": "now()"
-                }).execute()
+                    "cards_inventory": {"time_card": 0, "answer_card": 0, "shield_card": 0}
+                }
+                
+                supabase.table("users_global_profile").insert(new_user).execute()
+                logging.info(f"🆕 تم إنشاء بروفايل جديد لـ: {data['name']}")
 
         except Exception as e:
-            logging.error(f"❌ خطأ في ترحيل بيانات اللاعب {uid}: {e}")
+            logging.error(f"⚠️ فشل حفظ بيانات اللاعب {uid}: {e}")
             
 # ==========================================
 # 1. كيبوردات التحكم الرئيسية (Main Keyboards)
