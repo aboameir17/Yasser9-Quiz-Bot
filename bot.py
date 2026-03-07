@@ -2102,8 +2102,11 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
                 # إضافة النقاط (تأكد أن الإضافة تتم مرة واحدة فقط لكل سؤال)
                 overall_scores[uid]['points'] += 1
         
-            # 6. عرض لوحة المبدعين (الآن overall_scores مليئة بالبيانات!)
-            await send_creative_results2(chat_id, ans, current_winners, overall_scores)
+            # 6. عرض لوحة المبدعين (مع الصيد)
+            res_msg = await send_creative_results2(chat_id, ans, current_winners, overall_scores)
+            if isinstance(res_msg, types.Message):
+                results_to_delete.append(res_msg.message_id)
+                
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
