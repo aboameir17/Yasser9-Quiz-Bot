@@ -95,42 +95,46 @@ async def send_quiz_question(chat_id, q_data, current_num, total_num, settings):
 # ==========================================
 async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_public=False, mode="السرعة ⚡", group_names=None):
     """
-    قالب ياسر الملكي - نسخة نظام الوقت:
-    - في نظام الوقت: يعرض قائمة كاملة بكل من أجاب.
-    - في نظام السرعة: يعرض الأول فقط.
+    🎁 نسخة الهدية - قالب ياسر الملكي (التشطيب النهائي 2026)
+    تتميز بحساب ألقاب السرعة وجمالية التنسيق العالمي.
     """
     mode_icon = "⚡" if "سرعة" in mode else "⏰"
-    # فحص هل النظام "وقت" أم "سرعة"
     is_time_mode = "الوقت" in mode or "وقت" in mode
 
-    msg = "👑 <b>تـفـاصـيـل الـجـولـة الـمـلـكـيـة</b> 👑\n"
+    msg = f"🏆 <b>تـفـاصـيـل الـجـولـة الـمـلـكـيـة</b> {mode_icon}\n"
     msg += "━━━━━━━━━━━━━━━━━━\n"
-    msg += f"🎯 الإجابة الصحيحة: <b>「 {correct_ans} 」</b>\n"
+    msg += f"🎯 الإجابة: <b>「 {correct_ans} 」</b>\n"
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
-    # --- [ 1. عرض الأبطال حسب نظام المسابقة ] ---
+    # --- [ 1. عرض الأبطال مع ألقاب السرعة للهدية ] ---
     if winners:
-        msg += "🌟 <b>أصحاب الإجابات الصحيحة:</b>\n"
+        msg += "🌟 <b>نجم الجولة الحالية:</b>\n"
         
-        # إذا كان نظام وقت، نعرض الجميع. إذا سرعة، نعرض الأول فقط.
+        # في نظام السرعة نعرض الأول فقط بلقب مميز
         winners_to_show = winners if is_time_mode else [winners[0]]
         
         for idx, w in enumerate(winners_to_show):
             # تنسيق الميداليات
-            if idx == 0: medal = "🥇"
-            elif idx == 1: medal = "🥈"
-            elif idx == 2: medal = "🥉"
-            else: medal = "✨"
+            medal = "🥇" if idx == 0 else "🥈" if idx == 1 else "🥉" if idx == 2 else "✨"
             
+            # 🎁 [إضافة الهدية]: لقب السرعة
+            speed_title = ""
+            if not is_time_mode and 'time' in w:
+                t = float(w['time'])
+                if t < 1.0: speed_title = "⚡ (خارق الصمت)"
+                elif t < 3.0: speed_title = "🚀 (القناص السريع)"
+                elif t < 5.0: speed_title = "🏹 (المتمكن)"
+                else: speed_title = "🧠 (الذكي)"
+
             time_info = f" ⏱ <code>{w['time']}s</code>" if 'time' in w else ""
-            msg += f"{medal} ⇠ <b>{w['name']}</b> {time_info}\n"
+            msg += f"{medal} ⇠ <b>{w['name']}</b> {time_info} {speed_title}\n"
     else:
-        msg += "💤 <b>للأسف.. الوقت انتهى دون فائز!</b>\n"
+        msg += "💤 <b>انتهى الوقت دون حسم!</b>\n"
     
     msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
     # --- [ 2. الترتيب العالمي (مدمج بدون تكرار) ] ---
-    msg += "📊 <b>الـنـقـاط الـحـالـية (الترتيب العالمي):</b>\n"
+    msg += "📊 <b>الـنـقـاط الـتـراكمـيـة (TOP):</b>\n"
     combined_players = {}
     for gid, players in group_scores.items():
         for uid, pdata in players.items():
@@ -139,15 +143,16 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
             combined_players[uid]['points'] += pdata['points']
     
     sorted_players = sorted(combined_players.values(), key=lambda x: x['points'], reverse=True)
-    for i, p in enumerate(sorted_players):
-        m = "🥇 الأول" if i == 0 else "🥈الثاني" if i == 1 else "🥉الثالث" if i == 2 else "👤"
+    # عرض التوب 5 فقط لجمالية القالب
+    for i, p in enumerate(sorted_players[:5]):
+        m = "👑" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "👤"
         msg += f"{m} <b>{p['name']}</b> ⇠ <code>{p['points']}</code> ن\n"
     
     msg += "━━━━━━━━━━━━━━━━━━\n"
 
-    # --- [ 3. المجموعات والفرسان (سطر لكل فارس) ] ---
+    # --- [ 3. إحصائيات المجموعات (نظام الفرسان) ] ---
     if is_public:
-        msg += "\n👥 <b>تـرتـيـب المجوعات :</b>\n"
+        msg += "\n👥 <b>تـنـافـس الـمـجـمـوعـات :</b>\n"
         group_ranking = []
         for gid, players in group_scores.items():
             if players:
@@ -158,15 +163,18 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
         sorted_groups = sorted(group_ranking, key=lambda x: x['points'], reverse=True)
         for i, g in enumerate(sorted_groups):
             g_name = group_names.get(str(g['id']), f"جروب {g['id']}") if group_names else f"جروب {g['id']}"
-            msg += f" {i+1}➖ <b>مجموعة: {g_name}</b>\n"
-            msg += f" 🏆 الإجمالي: <code>{g['points']}</code> نقطة\n"
-            for p in g['players']:
-                msg += f"    👤 {p['name']} ⇠ ({p['points']}ن)\n"
+            # إضافة وسام لأول مجموعة
+            g_medal = "⭐" if i == 0 else "▫️"
+            msg += f"{g_medal} <b>{g_name}</b> ⇠ (<code>{g['points']}</code>ن)\n"
+            # عرض فارس المجموعة الأول فقط لتقليل طول الرسالة
+            if g['players']:
+                msg += f"    مجموعه الفرسان: 👤 <b>{g['players'][0]['name']}</b>\n"
             msg += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
 
-    msg += "\n🚀 <i>استعدوا.. السؤال التالي يتحضر الآن!</i>"
+    msg += "\n🔥 <i>استعد.. السؤال التالي في الطريق!</i>"
 
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
+  
 
 async def send_final_results(chat_id, scores, total_q, is_public=False, group_names=None):
     """
@@ -2069,10 +2077,10 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
                     overall_scores[uid] = {"name": w['name'], "points": 0}
                 
                 # إضافة النقاط (تأكد أن الإضافة تتم مرة واحدة فقط لكل سؤال)
-                overall_scores[uid]['points'] += 10
+                overall_scores[uid]['points'] += 1
         
             # 6. عرض لوحة المبدعين (الآن overall_scores مليئة بالبيانات!)
-            await send_creative_results2(chat_id, ans, current_winners, overall_scores)
+            await send_creative_results(chat_id, ans, current_winners, overall_scores)
         # --- [ ⏱️ محرك العداد التنازلي المطور لتجنب الـ Flood ] ---
         if i < len(questions) - 1:
             icons = ["🔴", "🟠", "🟡", "🟢", "🔵"]
@@ -2096,7 +2104,7 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
         else:
             await asyncio.sleep(2)
     # 7. إعلان لوحة الشرف النهائية
-    await send_final_results2(chat_id, overall_scores, len(questions))
+    await send_final_results(chat_id, overall_scores, len(questions))
 # ==========================================
 # ==========================================
 
