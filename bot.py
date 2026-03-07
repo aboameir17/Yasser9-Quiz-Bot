@@ -2344,10 +2344,10 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
             for mid in messages_to_delete.get(cid, []):
                 try: await bot.delete_message(cid, mid)
                 except: pass
-        # إغلاق المسابقة في سوبابيس نهائياً
-        if current_quiz_db_id:
-            try: supabase.table("active_quizzes").update({"is_active": False}).eq("id", current_quiz_db_id).execute()
-            except: pass
+
+            for r_mid in results_to_delete.get(cid, []):
+                try: await bot.delete_message(cid, r_mid)
+                except: pass
 
     except Exception as e:
         logging.error(f"🚨 Global Engine Fatal Error: {e}")
