@@ -173,8 +173,16 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
 
     msg += "\n🔥 <i>استعد.. السؤال التالي في الطريق!</i>"
 
-    return await bot.send_message(chat_id, msg, parse_mode="HTML")
-
+    # الإرسال مع return (ضروري جداً لمحرك الحذف)
+    try:
+        return await bot.send_message(chat_id, msg, parse_mode="HTML")
+    except Exception as e:
+        import logging
+        logging.error(f"⚠️ HTML Parsing Error: {e}")
+        # في حال فشل الـ HTML، يتم تنظيف النص وإرساله كنص عادي لضمان الحذف لاحقاً
+        clean_text = msg.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "").replace("<i>", "").replace("</i>", "")
+        return await bot.send_message(chat_id, clean_text)
+        
 async def send_broadcast_final_results(chat_id, scores, total_q, group_names=None):
     """
     🏆 قالب ياسر الملكي للإذاعة العالمية (النسخة النهائية V7)
@@ -633,7 +641,7 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
                     edit_tasks.append(bot.edit_message_text(text, cid, mid, reply_markup=kb, parse_mode="Markdown"))
             
             await asyncio.gather(*edit_tasks, return_exceptions=True)
-            await asyncio.sleep(2) 
+            await asyncio.sleep(0.2) 
 
         # 🚀 [ الخطوة الجوهرية المعدلة ] 🚀
         # 6. التصفية النهائية وتسجيل البيانات
