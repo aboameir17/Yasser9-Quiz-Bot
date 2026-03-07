@@ -310,8 +310,17 @@ async def send_creative_results2(chat_id, correct_ans, winners, overall_scores):
         medal = medals[i] if i < 3 else "👤"
         msg += f"{medal} {player['name']} — {player['points']}\n"
     
-    await bot.send_message(chat_id, msg, parse_mode="HTML")
-    
+    # --- [ نهاية قالب الإجابة - المحرك الخاص ] ---
+    try:
+        # كلمة return هنا هي المحرك الأساسي لعملية الحذف لاحقاً
+        return await bot.send_message(chat_id, msg, parse_mode="HTML")
+    except Exception as e:
+        import logging
+        logging.error(f"⚠️ HTML Error in Private Results: {e}")
+        # تنظيف النص من التاغات في حال وجود خطأ في التنسيق لضمان الإرسال
+        clean_msg = msg.replace("<b>","").replace("</b>","").replace("<code>","").replace("</code>","")
+        return await bot.send_message(chat_id, clean_msg)
+        
 async def send_final_results2(chat_id, overall_scores, correct_count):
     """تصميم ياسر لرسالة ختام المسابقة"""
     msg =  "━━━━━━━━━━━━━━━━━━━\n"
@@ -326,7 +335,6 @@ async def send_final_results2(chat_id, overall_scores, correct_count):
     msg += "\n━━━━━━━━━━━━━━━━━━━\n\n━━ 📊 إحصائيات التفاعل 📊 ━━\n"
     msg += "تهانينا للفائزين وحظاً أوفر لمن لم يحالفه الحظ! ❤️"
     await bot.send_message(chat_id, msg, parse_mode="HTML")
-
 # ==========================================
    # [اختياري] هنا يمكنك استدعاء دالة لترحيل النقاط إلى SQL (groups_hub) إذا أردت حفظها للأبد
 async def sync_points_to_db(group_scores, is_public=False):
@@ -411,7 +419,6 @@ def get_categories_kb(user_id):
     kb.add(InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_main_{user_id}"))
     
     return kb
-
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
@@ -461,6 +468,7 @@ def get_setup_quiz_kb(user_id):
         InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
     )
     return kb
+
 # ==========================================
 # الدوال المساعدة المحدثة (حماية + أسماء حقيقية)
 # ==========================================
@@ -891,6 +899,7 @@ async def process_auth_callback(c: types.CallbackQuery):
     await c.message.delete()
     await admin_manage_groups(c)
     
+
 # --- [ 2. إدارة الأقسام والأسئلة (النسخة النهائية المصلحة) ] ---
 
 @dp.callback_query_handler(lambda c: c.data.startswith('custom_add'), state="*")
@@ -1250,7 +1259,6 @@ async def execute_delete_question(c: types.CallbackQuery):
 
 
 # --- 7. حذف القسم نهائياً (النسخة المصلحة) ---
-
 @dp.callback_query_handler(lambda c: c.data.startswith('confirm_del_cat_'))
 async def confirm_delete_cat(c: types.CallbackQuery):
     data = c.data.split('_')
@@ -1349,6 +1357,8 @@ async def setup_quiz_main(c: types.CallbackQuery, state: FSMContext):
         reply_markup=get_setup_quiz_kb(owner_id), 
         parse_mode="Markdown"
     )
+
+
 # ==========================================
 # 1. اختيار مصدر الأسئلة (رسمي / خاص / أعضاء) - نسخة المجلدات والأسماء
 # ==========================================
