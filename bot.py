@@ -641,7 +641,7 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
                     edit_tasks.append(bot.edit_message_text(text, cid, mid, reply_markup=kb, parse_mode="Markdown"))
             
             await asyncio.gather(*edit_tasks, return_exceptions=True)
-            await asyncio.sleep(0.2) 
+            await asyncio.sleep(2) 
 
         # 🚀 [ الخطوة الجوهرية المعدلة ] 🚀
         # 6. التصفية النهائية وتسجيل البيانات
