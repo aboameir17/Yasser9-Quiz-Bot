@@ -2052,13 +2052,15 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
             "hint_sent": False
         }
         
-        # 3. إرسال قالب السؤال للقروب
-        await send_quiz_question(chat_id, q, i+1, len(questions), {
+        # 3. إرسال قالب السؤال للقروب (مع الصيد)
+        q_msg = await send_quiz_question(chat_id, q, i+1, len(questions), {
             'owner_name': owner_name, 
             'mode': quiz_data['mode'], 
             'time_limit': quiz_data['time_limit'], 
             'cat_name': cat_name
         })
+        if isinstance(q_msg, types.Message):
+            questions_to_delete.append(q_msg.message_id)
         
         # 4. محرك الوقت الذكي ومراقبة التلميح الملكي ✨
         start_time = time.time()
