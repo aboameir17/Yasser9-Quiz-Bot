@@ -2131,6 +2131,17 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
             await asyncio.sleep(2)
     # 7. إعلان لوحة الشرف النهائية
     await send_final_results2(chat_id, overall_scores, len(questions))
+
+    # 🔥 [عملية التنظيف الشامل] 🔥
+    # حذف الأسئلة
+    for q_mid in questions_to_delete:
+        try: await bot.delete_message(chat_id, q_mid)
+        except: pass
+
+    # حذف قوالب الإجابة المرحلية
+    for r_mid in results_to_delete:
+        try: await bot.delete_message(chat_id, r_mid)
+        except: pass
 # ==========================================
 # ==========================================
 
