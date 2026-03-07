@@ -174,15 +174,17 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
     msg += "\n🔥 <i>استعد.. السؤال التالي في الطريق!</i>"
 
     return await bot.send_message(chat_id, msg, parse_mode="HTML")
-  async def send_broadcast_final_results(chat_id, scores, total_q, group_names=None):
+async def send_broadcast_final_results(chat_id, scores, total_q, group_names=None):
     """
-    🏆 قالب ياسر للإذاعة العالمية (النسخة المحصنة من الأخطاء)
-    - يعالج مشكلة 'str' object has no attribute 'get'.
-    - يضمن ظهور النتائج حتى لو حدث نقص في بيانات اللاعبين.
+    🏆 قالب ياسر الملكي للإذاعة العالمية (النسخة النهائية V7)
+    - مخصص للإذاعة العامة فقط (ترتيب مجموعات + ملوك العالم).
+    - محصن تماماً ضد خطأ 'str' object has no attribute 'get'.
+    - يحسب IQ بطل كل مجموعة و IQ ملوك الإذاعة عالمياً.
     """
     try:
+        # 🎨 رأس القالب الفخم
         msg = "🌍 <b>تـم اخـتـتـام الإذاعـة الـعـالـمـيـة</b> 🌍\n"
-        msg += "<i>إحصائيات الأداء الفردي والجماعي للأبطال:</i>\n"
+        msg += "<i>حصاد المنافسة الكبرى في جميع المجموعات:</i>\n"
         msg += "━━━━━━━━━━━━━━━━━━\n"
         msg += "🏆   <b>{ لـوحـة الـشـرف الـعـالـمـيـة }</b>   🏆\n"
         msg += "━━━━━━━━━━━━━━━━━━\n\n"
@@ -190,34 +192,36 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
         all_global_players = {}
         group_ranking = []
         max_possible_pts = total_q * 10 
+        found_any_score = False
 
-        # --- [ 1. تحليل بيانات المجموعات واللاعبين ] ---
+        # --- [ 1. المحرك التحليلي للبيانات (Data Processor) ] ---
+        # نفترض أن scores هي: {gid: {uid: {name: "", points: 0}}}
         for gid, players in scores.items():
             if not players or not isinstance(players, dict): continue
             
             group_total_pts = 0
-            group_top_player = {"id": None, "name": "بطل مجهول", "points": 0}
+            group_top_player = {"id": None, "name": "بطل مجهول", "points": -1}
 
-            # تجميع بيانات اللاعبين في هذه المجموعة
             for uid, p_data in players.items():
-                # 🔥 التأكد من أن بيانات اللاعب قاموس وليس نص
+                found_any_score = True
                 pts = 0
                 name = "لاعب"
+                
+                # 🛡️ الحماية من خطأ الـ String
                 if isinstance(p_data, dict):
                     pts = p_data.get('points', 0)
                     name = p_data.get('name', 'لاعب')
                 else:
-                    # إذا كان p_data مجرد رقم (النقاط مباشرة)
-                    try: pts = int(p_data)
+                    try: pts = int(p_data) # إذا كانت النقاط مرسلة كرقيم مباشرة
                     except: pts = 0
 
                 group_total_pts += pts
                 
-                # تحديد بطل المجموعة
-                if pts >= group_top_player['points']:
+                # تحديد بطل المجموعة (صاحب أعلى نقاط في هذا الجروب)
+                if pts > group_top_player['points']:
                     group_top_player = {"id": uid, "name": name, "points": pts}
 
-                # تجميع النقاط العالمية
+                # 🌐 تجميع النقاط العالمية (جمع نقاط اللاعب من كل الجروبات)
                 u_id_str = str(uid)
                 if u_id_str not in all_global_players:
                     all_global_players[u_id_str] = {"name": name, "points": 0}
@@ -226,6 +230,7 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
             # تجهيز بيانات ترتيب المجموعات
             if group_top_player['id']:
                 g_name = group_names.get(str(gid), f"جروب {gid}") if group_names else f"جروب {gid}"
+                # حساب IQ بطل المجموعة
                 hero_iq = min(int((group_top_player['points'] / max_possible_pts) * 100) + 40, 100) if max_possible_pts > 0 else 40
                 hero_link = f'<a href="tg://user?id={group_top_player["id"]}">{group_top_player["name"]}</a>'
                 
@@ -236,9 +241,10 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
                     'hero_iq': hero_iq
                 })
 
-        # --- [ 2. عرض ترتيب المجموعات ] ---
+        # --- [ 2. عرض ترتيب المجموعات الأقوى (Top 3) ] ---
         if group_ranking:
-            msg += "👥 <b>تـرتـيـب الـمـجـمـوعـات (Groups IQ):</b>\n"
+            msg += "👥 <b>تـرتـيـب الـمـجـمـوعـات الأقـوى:</b>\n"
+            # ترتيب المجموعات حسب إجمالي نقاطها
             sorted_groups = sorted(group_ranking, key=lambda x: x['pts'], reverse=True)
             for i, g in enumerate(sorted_groups[:3], 1):
                 medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
@@ -246,27 +252,33 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
                 msg += f"┗ بطلها: {g['hero_link']} (🧠 <code>{g['hero_iq']}% IQ</code>)\n"
                 msg += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
 
-        # --- [ 3. ملوك الإذاعة عالمياً ] ---
+        # --- [ 3. ملوك الإذاعة (الترتيب العالمي الفردي) ] ---
         if all_global_players:
-            msg += "\n👑 <b>مـلـوك الإذاعـة (الترتيب العالمي):</b>\n"
+            msg += "\n👑 <b>مـلـوك الإذاعـة (عالمياً):</b>\n"
+            # ترتيب اللاعبين حسب مجموع نقاطهم في كل المسابقة
             sorted_global = sorted(all_global_players.items(), key=lambda x: x[1]['points'], reverse=True)
             
             for i, (uid, p) in enumerate(sorted_global[:5], 1):
                 p_link = f'<a href="tg://user?id={uid}">{p["name"]}</a>'
                 global_iq = min(int((p['points'] / max_possible_pts) * 100) + 40, 100) if max_possible_pts > 0 else 40
-                bar = "🔹" if i == 1 else "🔸"
-                msg += f"{bar} {i}➖ {p_link} ⇠ <b>{p['points']}</b> ن ({global_iq}% IQ)\n"
+                
+                # بار جمالي حسب المركز
+                icon = "🏆" if i == 1 else "🎖" if i <= 3 else "👤"
+                msg += f"{icon} {i}➖ {p_link} ⇠ <b>{p['points']}</b> ن ({global_iq}% IQ)\n"
 
-        msg += "\n━━━━━━━━━━━━━━━━━━\n"
-        msg += f"📊 إجمالي الأسئلة: <b>{total_q}</b>\n"
-        msg += "<i>كفو لكل العباقرة في كل المجموعات!</i> ❤️"
+        if not found_any_score:
+            msg = "🌍 <b>انتهت الإذاعة العالمية!</b>\n\nلم يتم تسجيل أي نقاط في هذه الجولة. حظاً أوفر! 🌹"
+        else:
+            msg += "\n━━━━━━━━━━━━━━━━━━\n"
+            msg += f"📊 إجمالي الأسئلة: <b>{total_q}</b>\n"
+            msg += "<i>تهانينا لكل العباقرة والمجموعات الفائزة!</i> ❤️"
 
         return await bot.send_message(chat_id, msg, parse_mode="HTML")
 
     except Exception as e:
         import logging
-        logging.error(f"❌ خطأ قاتل في قالب الإذاعة: {e}")
-        return await bot.send_message(chat_id, "🏁 انتهت الإذاعة! (تعذر عرض التنسيق بسبب تضارب البيانات)")
+        logging.error(f"❌ خطأ قاتل في قالب الإذاعة الملكي: {e}")
+        return await bot.send_message(chat_id, "🏁 انتهت الإذاعة! (حدث خطأ فني أثناء معالجة النتائج العالمية)")
 # ==========================================
 # ==========================================
 async def send_creative_results2(chat_id, correct_ans, winners, overall_scores):
@@ -278,7 +290,7 @@ async def send_creative_results2(chat_id, correct_ans, winners, overall_scores):
     if winners:
         msg += "━━ المتفوقون ✅ ━━\n"
         for i, w in enumerate(winners, 1):
-            msg += f"{i}- {w['name']} (+10)\n"
+            msg += f"{i}- {w['name']} (كسبت 1 نقطة)\n"
     else:
         msg += "❌ لم ينجح أحد في الإجابة على هذا السؤال\n"
     
@@ -2316,13 +2328,6 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
                 await asyncio.sleep(2)
 
         # 8️⃣ النتائج النهائية والتنظيف الرقمي
-        for cid in all_chats:
-            try: await send_broadcast_final_results(cid, group_scores.get(cid, {}), total_q)
-            except: pass
-            
-            for mid in messages_to_delete.get(cid, []):
-                try: await bot.delete_message(cid, mid)
-                except: pass
         
         # إغلاق المسابقة في سوبابيس نهائياً
         if current_quiz_db_id:
