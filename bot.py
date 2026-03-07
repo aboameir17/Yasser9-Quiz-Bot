@@ -170,20 +170,24 @@ async def send_creative_results(chat_id, correct_ans, winners, group_scores, is_
 
 async def send_final_results(chat_id, scores, total_q, is_public=False, group_names=None):
     """
-    نسخة ياسر المطور V4:
-    - تحويل أسماء اللاعبين لروابط تفتح ملفاتهم الشخصية (Mention by ID).
-    - دمج النقاط وحساب IQ.
+    نسخة ياسر المطور V5 (التشطيب النهائي):
+    - معالجة ذكية للروابط (Mention) لمنع تعليق التنسيق.
+    - حساب IQ دقيق مع "لقب جدارة".
+    - إظهار ترتيب المجموعات + ملوك الإذاعة في الإذاعة العامة.
     """
     try:
         msg = "🏁 <b>انتهت المسابقة بنجاح!</b> 🏁\n"
         msg += "شكرًا لكل من شارك وأمتعنا بمنافسته. 🌹\n"
-        msg += "— — — — — — — — — — —\n"
+        msg += "━━━━━━━━━━━━━━━━━━\n"
         msg += "🏆 <b>{ قـائـمـة الـعـبـاقـرة }</b> 🏆\n"
-        msg += "— — — — — — — — — — —\n\n"
+        msg += "━━━━━━━━━━━━━━━━━━\n\n"
 
         found_winners = False
 
         if is_public:
+            # ==========================================
+            # 🌐 وضع الإذاعة العامة (ترتيب مجموعات + ملوك)
+            # ==========================================
             group_list = []
             all_global_players = {}
 
@@ -192,42 +196,45 @@ async def send_final_results(chat_id, scores, total_q, is_public=False, group_na
                 total_pts = sum(p['points'] for p in players.values())
                 g_name = group_names.get(str(gid), f"جروب {gid}") if group_names else f"جروب {gid}"
                 
-                # جلب بطل المجموعة مع الـ ID الخاص به للرابط
-                # نفترض أن الهيكل يحتوي على 'uid' أو المفتاح هو الـ ID
+                # جلب بطل المجموعة الحالي
                 top_uid = max(players, key=lambda k: players[k]['points'])
                 top_p_name = players[top_uid]['name']
-                
-                # إنشاء رابط البطل
                 top_link = f'<a href="tg://user?id={top_uid}">{top_p_name}</a>'
+                
                 group_list.append({'name': g_name, 'pts': total_pts, 'top_link': top_link})
                 
                 for uid, p in players.items():
-                    if uid not in all_global_players:
-                        all_global_players[uid] = {"name": p['name'], "points": 0}
-                    all_global_players[uid]['points'] += p['points']
+                    uid_str = str(uid)
+                    if uid_str not in all_global_players:
+                        all_global_players[uid_str] = {"name": p['name'], "points": 0}
+                    all_global_players[uid_str]['points'] += p['points']
 
+            # 1. عرض ترتيب المجموعات (Top 3)
             if group_list:
                 found_winners = True
+                msg += "👥 <b>ترتيب المجموعات الأقوى:</b>\n"
                 sorted_groups = sorted(group_list, key=lambda x: x['pts'], reverse=True)
                 for i, g in enumerate(sorted_groups[:3], 1):
                     medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
-                    msg += f"{medal} <b>مجموعة: {g['name']}</b>\n"
-                    msg += f"┗ 🏆 الإجمالي: <code>{g['pts']}</code> ن | بطلها: {g['top_link']}\n"
+                    msg += f"{medal} <b>{g['name']}</b> ⇠ <code>{g['pts']}</code> ن\n"
+                    msg += f"┗ بطلها: {g['top_link']}\n"
                     msg += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
 
-                if all_global_players:
-                    # جلب ملك الإذاعة مع رابط لملفه
-                    top_uid_global = max(all_global_players, key=lambda k: all_global_players[k]['points'])
-                    top_name_global = all_global_players[top_uid_global]['name']
-                    top_global_link = f'<a href="tg://user?id={top_uid_global}">{top_name_global}</a>'
-                    
-                    iq_level = int((all_global_players[top_uid_global]['points'] / (total_q * 10)) * 100) + 45
-                    msg += f"\n👑 <b>ملك المسابقة:</b> {top_global_link}\n"
-                    msg += f"🧠 نسبة الذكاء المحققة: <code>{iq_level}% IQ</code>\n"
+            # 2. عرض ملوك المسابقة (الأفراد عالمياً)
+            if all_global_players:
+                msg += "\n👑 <b>ملوك الإذاعة (عالمياً):</b>\n"
+                sorted_global = sorted(all_global_players.items(), key=lambda x: x[1]['points'], reverse=True)
+                for i, (uid, p) in enumerate(sorted_global[:3], 1):
+                    g_medal = "🏆" if i == 1 else "🎖"
+                    p_link = f'<a href="tg://user?id={uid}">{p["name"]}</a>'
+                    # حساب IQ الملك
+                    iq_level = min(int((p['points'] / (total_q * 10)) * 100) + 40, 100)
+                    msg += f"{g_medal} {p_link} ⇠ <code>{p['points']}</code> ن ({iq_level}% IQ)\n"
 
         else:
-            # 📍 في المسابقة الخاصة: ترتيب الأفراد مع روابطهم
-            # ملاحظة: نستخدم هنا .items() للحصول على الـ UID (المفتاح) والبيانات
+            # ==========================================
+            # 🔒 وضع المسابقة الخاصة (ترتيب الأفراد)
+            # ==========================================
             sorted_players = sorted(scores.items(), key=lambda x: x[1]['points'], reverse=True)
             medals = ["🥇", "🥈", "🥉", "🏅", "🏅"]
             
@@ -235,14 +242,20 @@ async def send_final_results(chat_id, scores, total_q, is_public=False, group_na
                 found_winners = True
                 icon = medals[i] if i < len(medals) else "👤"
                 user_link = f'<a href="tg://user?id={uid}">{p["name"]}</a>'
-                iq_val = int((p['points'] / (total_q * 10)) * 100) + 40
                 
-                msg += f"{icon} {user_link} ⇠ <code>{p['points']}</code> ن\n"
-                msg += f"┗ 🧠 ذكاء الجولة: <code>{iq_val}% IQ</code>\n"
+                # حساب الـ IQ بناءً على النقاط القصوى المحتملة
+                max_pts = total_q * 10
+                iq_val = min(int((p['points'] / max_pts) * 100) + 40, 100) if max_pts > 0 else 40
+                
+                # لقب الجدارة بناءً على الـ IQ
+                rank = "عبقري" if iq_val > 85 else "متمكن" if iq_val > 70 else "ذكي"
+                
+                msg += f"{icon} {user_link} ⇠ <b>{p['points']}</b> ن\n"
+                msg += f"┗ 🧠 ذكاء الجولة: <code>{iq_val}% IQ</code> ({rank})\n"
                 msg += "┈┉┈┉┈┉┈┉┈┉┈┉┈┉┈┉\n"
 
         if not found_winners:
-            msg = "🏁 <b>انتهت المسابقة!</b>\n\n❌ للأسف لم يتم تسجيل أي نقاط. حظاً أوفر! 🌹"
+            msg = "🏁 <b>انتهت المسابقة!</b>\n\n❌ لم يتم تسجيل أي نقاط كافية لإظهار النتائج. حظاً أوفر! 🌹"
         else:
             msg += f"\n📊 إجمالي الأسئلة: <b>{total_q}</b>\n"
             msg += "تهانينا للفائزين وحظاً أوفر للجميع! ❤️"
@@ -250,11 +263,9 @@ async def send_final_results(chat_id, scores, total_q, is_public=False, group_na
         return await bot.send_message(chat_id, msg, parse_mode="HTML")
 
     except Exception as e:
-        logging.error(f"Error in send_final_results: {e}")
-        try:
-            return await bot.send_message(chat_id, "🏁 <b>انتهت المسابقة!</b>\n(حدث خطأ في عرض التنسيق الفني)")
-        except: pass
- 
+        logging.error(f"❌ خطأ في قالب النتائج النهائي: {e}")
+        return await bot.send_message(chat_id, "🏁 <b>انتهت المسابقة!</b>\n(تعذر عرض التنسيق الكامل للنتائج)")
+
 # ==========================================
 # ==========================================
 async def send_creative_results2(chat_id, correct_ans, winners, overall_scores):
