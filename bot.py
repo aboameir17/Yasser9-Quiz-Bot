@@ -2315,7 +2315,11 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
                     group_names=group_names_map  # قاموس الأسماء الذي عرفناه في بداية الدالة
                 ))
             
-            await asyncio.gather(*res_tasks, return_exceptions=True)
+            # 🔥 استبدل السطر القديم بهذا البلوك لصيد مُعرفات رسائل الإجابة
+            res_msgs = await asyncio.gather(*res_tasks, return_exceptions=True)
+            for idx, rm in enumerate(res_msgs):
+                if isinstance(rm, types.Message):
+                    results_to_delete[all_chats[idx]].append(rm.message_id)
             
             # (اختياري) عداد تنازلي هنا للسؤال التالي
             # 7️⃣ العداد التنازلي للسؤال القادم
