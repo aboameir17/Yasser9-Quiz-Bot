@@ -2191,7 +2191,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
         total_q = len(selected_questions)
         group_scores = {cid: {} for cid in all_chats}
         messages_to_delete = {cid: [] for cid in all_chats}
-
+        results_to_delete = {cid: [] for cid in all_chats}
         # 🟢 [الخطوة 1] فتح سجل للمسابقة في سوبابيس 
         current_quiz_db_id = None
         try:
