@@ -2027,6 +2027,9 @@ async def delete_after(message, delay):
 async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_type):
     random.shuffle(questions)
     overall_scores = {}
+    # 🟢 قوائم الصيد للمحرك الخاص
+    questions_to_delete = []
+    results_to_delete = []
 
     for i, q in enumerate(questions):
         # 1. استخراج الإجابة والنص حسب نوع المصدر
