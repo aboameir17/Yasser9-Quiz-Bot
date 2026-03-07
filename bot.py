@@ -2327,8 +2327,22 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
             else:
                 await asyncio.sleep(2)
 
-        # 8️⃣ النتائج النهائية والتنظيف الرقمي
         
+        # 8️⃣ النتائج النهائية والتنظيف الرقمي
+        for cid in all_chats:
+            try: 
+                await send_broadcast_final_results(
+                    chat_id=cid, 
+                    scores=group_scores, 
+                    total_q=total_q, 
+                    group_names=group_names_map
+                )
+            except Exception as e: 
+                logging.error(f"Error in final results: {e}")
+            
+            for mid in messages_to_delete.get(cid, []):
+                try: await bot.delete_message(cid, mid)
+                except: pass
         # إغلاق المسابقة في سوبابيس نهائياً
         if current_quiz_db_id:
             try: supabase.table("active_quizzes").update({"is_active": False}).eq("id", current_quiz_db_id).execute()
