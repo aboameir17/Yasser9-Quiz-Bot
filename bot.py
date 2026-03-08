@@ -814,91 +814,79 @@ async def get_user_full_data(user_id: int):
         return None
 
 async def format_profile_card(user_data: dict, user_id: int):
-    """تنسيق البطاقة الفخمة مع شريط التقدم وتفاصيل التخصصات"""
+    """
+    تنسيق البطاقة الفخمة - نسخة ياسر المطورة 2026
+    تم استعادة الحساب البنكي وتفصيل الكروت بدقة.
+    """
     p = user_data
     ans_count = p.get('correct_answers_count', 0)
     
-    # --- [ 1. منطق حساب الرتبة والتقدم ] ---
+    # --- [ 1. منطق الرتب والتقدم ] ---
     ranks_map = [
-        ("طالب مبتدئ", 100),
-        ("طالب ثانوية", 250),
-        ("طالب جامعي", 500),
-        ("بروفيسور", 1000),
-        ("عالم عبقري", 2000),
-        ("أسطورة المعرفة", 5000)
+        ("طالب مبتدئ", 100), ("طالب ثانوية", 250), ("طالب جامعي", 500),
+        ("بروفيسور", 1000), ("عالم عبقري", 2000), ("أسطورة المعرفة", 5000)
     ]
     
-    current_rank = "طالب مبتدئ"
-    next_rank_name = "القمة"
-    target_pts = 5000
-    prev_pts = 0
-    
+    current_rank, next_rank_name, target_pts, prev_pts = "طالب مبتدئ", "القمة", 5000, 0
     for i, (name, limit) in enumerate(ranks_map):
         if ans_count <= limit:
             current_rank = name
             next_rank_name = ranks_map[i+1][0] if i+1 < len(ranks_map) else "القمة"
-            target_pts = limit
-            prev_pts = ranks_map[i-1][1] if i > 0 else 0
+            target_pts, prev_pts = limit, (ranks_map[i-1][1] if i > 0 else 0)
             break
 
-    # حساب النسبة المئوية ورسم الشريط
-    progress_needed = target_pts - prev_pts
-    progress_done = ans_count - prev_pts
-    percentage = min(100, max(0, (progress_done / progress_needed) * 100))
-    filled_blocks = int(percentage // 10)
-    progress_bar = "🟢" * filled_blocks + "⚪" * (10 - filled_blocks)
+    percentage = min(100, max(0, ((ans_count - prev_pts) / (target_pts - prev_pts)) * 100))
+    progress_bar = "🟢" * int(percentage // 10) + "⚪" * (10 - int(percentage // 10))
 
-    # --- [ 2. معالجة التخصصات من category_stats ] ---
-    stats = p.get('category_stats', {})
-    if isinstance(stats, str):
-        import json
-        try: stats = json.loads(stats)
-        except: stats = {}
-    
-    specialties_list = ""
-    if stats:
-        # ترتيب التخصصات من الأكثر إجابة للأقل
-        sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
-        for i, (cat, val) in enumerate(sorted_stats):
-            icon = "👑" if i == 0 else "🔹" # التاج للأول
-            specialties_list += f"{icon} خبير {cat}: <code>{val}</code> إجابة\n"
-    else:
-        specialties_list = "🔹 لا توجد تخصصات مسجلة بعد.\n"
+    # --- [ 2. معالجة البيانات المعقدة (JSON) ] ---
+    def parse_json(data):
+        if isinstance(data, str):
+            import json
+            try: return json.loads(data)
+            except: return {}
+        return data or {}
+
+    stats = parse_json(p.get('category_stats'))
+    cards = parse_json(p.get('cards_inventory'))
+    titles = p.get('titles', []) 
+    inventory = p.get('inventory', []) 
 
     # --- [ 3. بناء نص البطاقة النهائي ] ---
-    cards = p.get('cards_inventory', {})
-    if isinstance(cards, str):
-        import json
-        try: cards = json.loads(cards)
-        except: cards = {}
+    card = f"<b>       👤 : بـروفـايـل الـمـتـمـيـز 👤</b>\n"
+    card += "<b>— — — — — — — — — — — —</b>\n"
+    card += f"🆔 <b>:</b> الاسم ⇠ <a href='tg://user?id={user_id}'>{p.get('user_name', 'مشارك جديد')}</a>\n"
+    card += f"💳 <b>:</b> الحساب ⇠ <code>#{p.get('bank_account', '----')}</code>\n" # تم استعادة الحساب هنا
+    card += f"🎓 <b>:</b> الرتبة ⇠ <b>{current_rank}</b>\n"
+    card += f"🎖 <b>:</b> التخصص ⇠ <b>{p.get('specialty_title', 'هاوي')}</b>\n"
+    
+    if titles:
+        card += f"👑 <b>:</b> الألقاب ⇠ <code>{' | '.join(titles[:2])}</code>\n"
+    
+    card += "<b>— — — — — — — — — — — —</b>\n"
+    card += f"📈 <b>: التقدم لـ ({next_rank_name}) :</b>\n"
+    card += f"{progress_bar} <code>{int(percentage)}%</code>\n"
+    card += f"🎯 <b>:</b> المتبقي ⇠ <code>{max(0, target_pts - ans_count)}</code> إجابة\n"
+    card += "<b>— — — — — — — — — — — —</b>\n"
+    
+    card += f"💰 <b>:</b> المحفظة ⇠ <code>{p.get('wallet', 0)}</code> ن\n"
+    card += f"🧠 <b>:</b> الذكاء ⇠ <code>{p.get('iq_score', 0)}% IQ</code>\n"
+    card += f"🏆 <b>:</b> الفوز العام ⇠ <code>{p.get('total_wins', 0)}</code>\n"
+    card += f"🔥 <b>:</b> فوز خاص ⇠ <code>{p.get('special_wins', 0)}</code>\n"
+    card += f"✅ <b>:</b> الإجمالي ⇠ <code>{ans_count}</code> إجابة\n"
+    card += "<b>— — — — — — — — — — — —</b>\n"
+    
+    card += "<b>🃏 : مـخـزن الـكـروت الـمـلـكـي :</b>\n"
+    card += f"⏳ <b>:</b> كرت الوقت ⇠ [ <code>{cards.get('time_card', 0)}</code> ]\n"
+    card += f"👁 <b>:</b> كرت الإجابة ⇠ [ <code>{cards.get('answer_card', 0)}</code> ]\n"
+    card += f"💡 <b>:</b> كرت التلميح ⇠ [ <code>{cards.get('hint_card', 0)}</code> ]\n"
+    card += f"🛡 <b>:</b> كرت الدرع ⇠ [ <code>{cards.get('shield_card', 0)}</code> ]\n"
+    card += "<b>— — — — — — — — — — — —</b>\n"
 
-    card = f"<b>       👤 بـروفـايـل الـمـتـمـيـز 👤</b>\n"
-    card += "<b>— — — — — — — — — — —</b>\n"
-    card += f"🆔 الاسم: <a href='tg://user?id={user_id}'>{p.get('user_name', 'مشارك جديد')}</a>\n"
-    card += f"💳 الحساب: <code>#{p.get('bank_account', '----')}</code>\n"
-    card += f"🎓 الرتبة: <b>{current_rank}</b>\n"
-    card += "<b>— — — — — — — — — — —</b>\n"
-    card += f"📈 <b>التقدم للرتبة ({next_rank_name}):</b>\n"
-    card += f"{progress_bar} {int(percentage)}%\n"
-    card += f"🎯 متبقي: <code>{target_pts - ans_count}</code> إجابة\n"
-    card += "<b>— — — — — — — — — — —</b>\n\n"
-    
-    card += "<b>🎖️ التخصصات العلمية:</b>\n"
-    card += specialties_list
-    card += "<b>— — — — — — — — — — —</b>\n\n"
-    
-    card += f"💰 المحفظة: <code>{p.get('wallet', 0)}</code> \n"
-    card += f"🧠 الذكاء: <code>{p.get('iq_score', 0)}% IQ</code>\n"
-    card += f"🏆 الفوز: <code>{p.get('total_wins', 0)}</code> جولة\n"
-    card += f"✅ الإجمالي: <code>{ans_count}</code> إجابة\n"
-    card += "<b>— — — — — — — — — — —</b>\n\n"
-    
-    card += "<b>🃏 مخزن الكروت الاستراتيجية:</b>\n"
-    card += f"⏳ الوقت: [ <code>{cards.get('time_card', 0)}</code> ] | 👁️ الإجابة: [ <code>{cards.get('answer_card', 0)}</code> ]\n"
-    card += "<b>— — — — — — — — — — —</b>\n"
+    if inventory:
+        card += f"📦 <b>:</b> المقتنيات ⇠ <code>{' | '.join(inventory)}</code>\n"
+        card += "<b>— — — — — — — — — — — —</b>\n"
 
     return card
-
 # 1️⃣ دالة لوحة الأزرار (Keyboard)
 def get_profile_keyboard():
     """تجهيز لوحة الأزرار الموحدة لبطاقة البروفايل"""
