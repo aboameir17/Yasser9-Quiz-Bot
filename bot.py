@@ -355,6 +355,8 @@ async def send_final_results2(chat_id, overall_scores, total_q):
 
         await bot.send_message(chat_id, msg, parse_mode="HTML")
 
+
+
 async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="عام", is_special=False):
     """
     👑 محرك ياسر الملكي المتكامل 2026
