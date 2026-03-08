@@ -1065,6 +1065,81 @@ def get_shop_main_keyboard():
     )
     return keyboard
     
+@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_card_'))
+async def process_card_purchase(call):
+    user_id = call.from_user.id
+    # استخراج نوع الكرت من الـ callback_data
+    # التنسيق المتوقع: buy_card_time, buy_card_hint, etc.
+    card_map = {
+        "time": {"name": "كرت الوقت ⏳", "key": "time_card", "price": 100},
+        "answer": {"name": "كرت الإجابة 👁", "key": "answer_card", "price": 250},
+        "hint": {"name": "كرت التلميح 💡", "key": "hint_card", "price": 150},
+        "shield": {"name": "كرت الدرع 🛡", "key": "shield_card", "price": 300}
+    }
+    
+    card_type = call.data.replace('buy_card_', '')
+    card_info = card_map.get(card_type)
+    
+    if not card_info:
+        return await bot.answer_callback_query(call.id, "❌ : صنف غير معروف !")
+
+    try:
+        # 1. جلب بيانات اللاعب الحالية
+        res = supabase.table("users_global_profile").select("*").eq("user_id", user_id).execute()
+        if not res.data:
+            return await bot.answer_callback_query(call.id, "❌ : ليس لديك حساب مسجل !")
+        
+        user_data = res.data[0]
+        current_wallet = user_data.get('wallet', 0)
+        cards_inventory = user_data.get('cards_inventory') or {}
+        
+        # التأكد من نوع بيانات الكروت (تحويل من String إذا لزم الأمر)
+        if isinstance(cards_inventory, str):
+            import json
+            cards_inventory = json.loads(cards_inventory)
+
+        # 2. التحقق من القدرة المالية
+        if current_wallet < card_info['price']:
+            return await bot.answer_callback_query(
+                call.id, 
+                f"⚠️ : عذراً! رصيدك ({current_wallet}) غير كافٍ لشراء {card_info['name']}", 
+                show_alert=True
+            )
+
+        # 3. تنفيذ عملية الشراء (الخصم والإضافة)
+        new_wallet = current_wallet - card_info['price']
+        cards_inventory[card_info['key']] = cards_inventory.get(card_info['key'], 0) + 1
+        
+        # 4. تحديث قاعدة البيانات
+        upd_res = supabase.table("users_global_profile").update({
+            "wallet": new_wallet,
+            "cards_inventory": cards_inventory
+        }).eq("user_id", user_id).execute()
+
+        if upd_res.data:
+            # تحديث رسالة المتجر لتعكس الرصيد الجديد
+            new_text = await format_shop_bazaar_card(new_wallet)
+            await bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=new_text,
+                parse_mode="HTML",
+                reply_markup=get_shop_main_keyboard()
+            )
+            await bot.answer_callback_query(call.id, f"✅ : تم شراء {card_info['name']} بنجاح !", show_alert=False)
+        
+    except Exception as e:
+        import logging
+        logging.error(f"❌ : خطأ في عملية الشراء : {e}")
+        await bot.answer_callback_query(call.id, "❌ : حدث خطأ فني أثناء الشراء .")
+
+@bot.callback_query_handler(func=lambda call: call.data == "close_card")
+async def close_ui(call):
+    try:
+        await bot.delete_message(call.message.chat.id, call.message.message_id)
+    except:
+        await bot.answer_callback_query(call.id, "❌ : لا يمكن حذف الرسالة !")
+        
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
