@@ -347,17 +347,18 @@ async def send_final_results2(chat_id, overall_scores, correct_count):
 async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="عام"):
     """
     محرك ياسر المطور 2026: 
-    1. ترحيل النقاط والمحفظة.
-    2. حساب IQ والترقيات العلمية.
-    3. رصد الفوز العالمي للمجموعات.
-    4. تحليل التخصص بناءً على الأقسام (جغرافيا، تاريخ، إلخ).
+    - الفوز: يمنح لجميع لاعبي المجموعة التي احتلت المركز الأول فقط.
+    - الإجابات: كل 10 نقاط = 1 إجابة صحيحة.
     """
-    if winners_list is None: winners_list = []
+    # تحديد المجموعة المتصدرة (أول مجموعة في القائمة المرسلة)
+    top_group_id = winners_list[0] if winners_list else None
     
-    # 1. تجميع النقاط والبيانات من كافة المجموعات
+    # 1. تجميع النقاط والبيانات
     final_tallies = {}
+    
     for cid, players in group_scores.items():
-        is_group_winner = cid in winners_list 
+        # هل هذه هي المجموعة صاحبة المركز الأول؟
+        is_the_champion_group = (cid == top_group_id)
         
         for uid, p_data in players.items():
             u_id = int(uid)
@@ -369,17 +370,24 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                     "won_round": 0
                 }
             
-            final_tallies[u_id]["pts"] += p_data['points']
-            final_tallies[u_id]["ans_count"] += 1 if p_data['points'] > 0 else 0
-            if is_group_winner:
+            current_group_pts = p_data.get('points', 0)
+            
+            # تحديث إجمالي النقاط
+            final_tallies[u_id]["pts"] += current_group_pts
+            
+            # حساب الإجابات (كل 10 نقاط = 1 إجابة)
+            final_tallies[u_id]["ans_count"] += (current_group_pts // 10)
+            
+            # ✅ التعديل الجديد: إذا كان اللاعب ينتمي للمجموعة المتصدرة، يحصل على فوز
+            if is_the_champion_group:
                 final_tallies[u_id]["won_round"] = 1
 
-    # 2. بدء عملية الربط مع قاعدة البيانات
+    # 2. الربط مع سوبابيس (Payload)
     for uid, data in final_tallies.items():
         try:
             res = supabase.table("users_global_profile").select("*").eq("user_id", uid).execute()
             
-            # --- [ دالة حساب الرتبة التعليمية ] ---
+            # دالات الحساب (الرتبة والتخصص) تظل كما هي لضمان المنطق العلمي
             def calculate_rank(total_ans):
                 if total_ans <= 100: return "طالب مبتدئ"
                 elif 101 <= total_ans <= 250: return "طالب ثانوية"
@@ -388,7 +396,6 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                 elif 1001 <= total_ans <= 2000: return "عالم عبقري"
                 else: return "أسطورة المعرفة"
 
-            # --- [ دالة تحديد اللقب بناءً على التخصص الطاغي ] ---
             def calculate_specialty(stats):
                 if not stats: return "هاوي"
                 top_cat = max(stats, key=stats.get)
@@ -399,10 +406,7 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                 else: return f"محب لـ {top_cat}"
 
             if res.data:
-                # --- [ الحالة الأولى: اللاعب موجود - تحديث ] ---
                 current = res.data[0]
-                
-                # تحديث إحصائيات الأقسام (Category Stats)
                 current_stats = current.get('category_stats') or {}
                 current_stats[cat_name] = current_stats.get(cat_name, 0) + data['ans_count']
                 
@@ -423,10 +427,10 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                 }
                 
                 supabase.table("users_global_profile").update(upd_payload).eq("user_id", uid).execute()
-                logging.info(f"✅ تم تحديث بيانات ورتبة وتخصص: {data['name']}")
+                logging.info(f"✅ تم تحديث بيانات بطل المجموعة المتصدرة: {data['name']}")
 
             else:
-                # --- [ الحالة الثانية: لاعب جديد - إنشاء ] ---
+                # إنشاء سجل للاعب جديد مع احتساب الفوز إذا كان في المجموعة الأولى
                 first_stats = {cat_name: data['ans_count']}
                 new_payload = {
                     "user_id": uid,
@@ -442,10 +446,10 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                     "cards_inventory": {"time_card": 0, "answer_card": 0, "shield_card": 0}
                 }
                 supabase.table("users_global_profile").insert(new_payload).execute()
-                logging.info(f"🆕 إنشاء بروفايل عالمي متكامل لـ: {data['name']}")
+                logging.info(f"🆕 بروفايل جديد لبطل المجموعة: {data['name']}")
 
         except Exception as e:
-            logging.error(f"❌ خطأ ترحيل البيانات المطور لـ {uid}: {e}")
+            logging.error(f"❌ خطأ في ترحيل بيانات {uid}: {e}")
             
 # ==========================================
 # 1. كيبوردات التحكم الرئيسية (Main Keyboards)
