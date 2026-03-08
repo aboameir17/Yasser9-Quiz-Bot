@@ -991,6 +991,80 @@ async def close_callback(c: types.CallbackQuery):
         await c.message.delete()
     except:
         await c.answer("انتهت صلاحية الرسالة ⚠️")
+
+# 1️⃣ دالة تنسيق قالب المتجر النصي
+async def format_shop_bazaar_card(user_wallet: int):
+    """
+    تنسيق واجهة المتجر الملكي - نسخة 2026
+    تصميم باحترافية جهة اليمين مع تقسيمات ذكية.
+    """
+    
+    # 🎨 رأس القالب (التصميم العام)
+    shop = f"<b>       🛒 : الـمـتـجـر الـعـالـمـي الـكـبـيـر 🛒</b>\n"
+    shop += "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
+    
+    # قسم رصيد اللاعب (الأهم ليعرف كم يملك)
+    shop += f"💰 <b>: رصيدك الحالي ⇠ <code>{user_wallet}</code> ن</b>\n"
+    shop += "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
+    
+    # القسم الأول: مخزن الكروت الاستراتيجية (أسلحة اللعب)
+    shop += "<b>🃏 : قسم الـكـروت الاسـتـراتـيـجـيـة :</b>\n"
+    shop += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
+    shop += f"⏳ <b>: كرت الوقت ⇠ <code>100</code> ن</b>\n"
+    shop += f"      ⇠ [ 💡 لتمديد وقت الإجابة ]\n"
+    shop += f"👁 <b>: كرت الإجابة ⇠ <code>250</code> ن</b>\n"
+    shop += f"      ⇠ [ 💡 لكشف الإجابة الصحيحة ]\n"
+    shop += f"💡 <b>: كرت التلميح ⇠ <code>150</code> ن</b>\n"
+    shop += f"      ⇠ [ 💡 لإظهار لمحة عن الحل ]\n"
+    shop += f"🛡 <b>: كرت الدرع ⇠ <code>300</code> ن</b>\n"
+    shop += f"      ⇠ [ 💡 للحماية من خصم النقاط ]\n"
+    shop += "━━━━━━━━━━━━━━━━━━\n\n"
+    
+    # القسم الثاني: المقتنيات النادرة والأوسمة (للفخر والتباهي)
+    shop += "<b>📦 : قـسـم الـمـقـتـنـيـات والـأوسـمـة :</b>\n"
+    shop += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
+    shop += f"🎖 <b>: وسام الشجاعة ⇠ <code>5000</code> ن</b>\n"
+    shop += f"🏅 <b>: تاج الذكاء ⇠ <code>10000</code> ن</b>\n"
+    shop += f"📜 <b>: لقب 'الخبير' ⇠ <code>3000</code> ن</b>\n"
+    shop += f"⚔ <b>: سيف القنص ⇠ <code>7000</code> ن</b>\n"
+    shop += "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
+    
+    # ذيل القالب
+    shop += "✅ <b>: اختر القسم من الأزرار للبدء بالشراء</b>\n"
+    shop += "⚠️ <b>: تأكد من رصيدك قبل إتمام العملية</b>"
+
+    return shop
+
+
+# 2️⃣ دالة لوحة الأزرار (Keyboard) - مقسمة حسب الأقسام
+def get_shop_main_keyboard():
+    """تجهيز لوحة الأزرار الموحدة للمتجر (أزرار للشراء)"""
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    
+    # زر تأكيدي لإظهار رصيد اللاعب (إضافة لمسة "شريك")
+    keyboard.add(InlineKeyboardButton("💰 : محفظتي", callback_data="show_wallet"))
+    
+    # صف واحد للكروت
+    keyboard.add(
+        InlineKeyboardButton("⏳ : شراء وقت", callback_data="buy_card_time"),
+        InlineKeyboardButton("👁 : شراء إجابة", callback_data="buy_card_answer")
+    )
+    # صف ثاني للكروت
+    keyboard.add(
+        InlineKeyboardButton("💡 : شراء تلميح", callback_data="buy_card_hint"),
+        InlineKeyboardButton("🛡 : شراء درع", callback_data="buy_card_shield")
+    )
+    
+    # زر للمقتنيات
+    keyboard.add(InlineKeyboardButton("📦 : شراء مقتنيات", callback_data="shop_items"))
+    
+    # زر الرجوع للبروفايل أو الإغلاق
+    keyboard.add(
+        InlineKeyboardButton("👤 : البروفايل", callback_data="open_profile"),
+        InlineKeyboardButton("❌ : إغلاق المتجر", callback_data="close_card")
+    )
+    return keyboard
+    
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
