@@ -2484,19 +2484,44 @@ async def run_universal_logic(chat_id, questions, quiz_data, owner_name, engine_
                 logging.error(f"Countdown Error: {e}")
         else:
             await asyncio.sleep(2)
-    # 7. إعلان لوحة الشرف النهائية
+    # 7. إعلان لوحة الشرف النهائية (العرض البصري)
     await send_final_results2(chat_id, overall_scores, len(questions))
 
-    # 🔥 [عملية التنظيف الشامل] 🔥
+    # 🚀 [ الـمـسـتـقـبل الـمـلـكـي : ترحيل البيانات للجدول العالمي ]
+    # نقوم بتحويل overall_scores لشكل يتوافق مع المحرك (وضع اللاعبين في مجموعة وهمية واحدة لأنها فردية)
+    try:
+        # نحولها لشكل { "special_event": overall_scores } لكي يفهمها المحرك كمجموعة فائزة
+        data_to_sync = {"special_event": overall_scores}
+        
+        # استدعاء المحرك مع وضع is_special=True لرفعها في عمود special_wins
+        # وتحديد أن المجموعة "special_event" هي الفائزة
+        await sync_points_to_global_db(
+            group_scores=data_to_sync, 
+            winners_list=["special_event"], 
+            cat_name="مسابقة خاصة", 
+            is_special=True
+        )
+        logging.info("✅ : تم ترحيل نتائج المسابقة الخاصة للسجل العالمي بنجاح")
+    except Exception as e:
+        logging.error(f"❌ : فشل ترحيل بيانات المسابقة الخاصة : {e}")
+
+    # 🔥 [ عملية التنظيف الشامل ] 🔥
     # حذف الأسئلة
     for q_mid in questions_to_delete:
-        try: await bot.delete_message(chat_id, q_mid)
-        except: pass
+        try: 
+            await bot.delete_message(chat_id, q_mid)
+        except: 
+            pass
 
     # حذف قوالب الإجابة المرحلية
     for r_mid in results_to_delete:
-        try: await bot.delete_message(chat_id, r_mid)
-        except: pass
+        try: 
+            await bot.delete_message(chat_id, r_mid)
+        except: 
+            pass
+            
+    logging.info("🧹 : تم تنظيف ساحة المسابقة بنجاح")
+    
 # ==========================================
 # ==========================================
 
