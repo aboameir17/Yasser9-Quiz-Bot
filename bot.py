@@ -728,29 +728,44 @@ async def start_broadcast_process(c: types.CallbackQuery, quiz_id: int, owner_id
 async def get_user_full_data(user_id: int):
     """جلب بيانات اللاعب من سوبابيس بالكامل"""
     try:
-        res = supabase.table("users_global_profile").select("*").eq("user_id", user_id).execute()
+        # تأكد من أن user_id مرسل كـ int ليتوافق مع BigInt في الجدول
+        res = supabase.table("users_global_profile").select("*").eq("user_id", int(user_id)).execute()
         return res.data[0] if res.data else None
     except Exception as e:
-        logging.error(f"Supabase Error: {e}")
+        logging.error(f"Supabase Profile Fetch Error: {e}")
         return None
-# ========================================
+
+async def get_user_photo(user_id: int):
+    """دالة ذكية لجلب صورة بروفايل المستخدم من تليجرام"""
+    try:
+        photos = await bot.get_user_profile_photos(user_id, limit=1)
+        if photos.total_count > 0:
+            return photos.photos[0][-1].file_id # جلب أعلى جودة للصورة
+        return None
+    except:
+        return None
+
 async def format_profile_card(user_data: dict, user_id: int):
-    """تجهيز نص البطاقة الفخم بناءً على البيانات المستلمة"""
+    """تجهيز نص البطاقة الفخم بناءً على البيانات المستلمة من الجدول"""
     p = user_data
+    # استخراج كروت الاستراتيجية من حقل JSONB
     cards = p.get('cards_inventory', {})
+    if isinstance(cards, str): # حماية في حال كانت مخزنة كنص
+        import json
+        cards = json.loads(cards)
     
     card = f"<b>       👤 بـروفـايـل الـمـتـمـيـز 👤</b>\n"
     card += "<b>— — — — — — — — — — —</b>\n"
-    card += f"🆔 الاسم: <a href='tg://user?id={user_id}'>{p['user_name']}</a>\n"
-    card += f"💳 الحساب البنكي: <code>#{p['bank_account']}</code>\n"
-    card += f"🎓 الرتبة: <b>{p['educational_rank']}</b>\n"
-    card += f"🎖️ التخصص: <b>{p['specialty_title']} 🏆</b>\n"
+    card += f"🆔 الاسم: <a href='tg://user?id={user_id}'>{p.get('user_name', 'غير معروف')}</a>\n"
+    card += f"💳 الحساب البنكي: <code>#{p.get('bank_account', '0000')}</code>\n"
+    card += f"🎓 الرتبة: <b>{p.get('educational_rank', 'طالب')}</b>\n"
+    card += f"🎖️ التخصص: <b>{p.get('specialty_title', 'هاوي')} 🏆</b>\n"
     card += "<b>— — — — — — — — — — —</b>\n\n"
     
-    card += f"💰 المحفظة: <code>{p['wallet']}</code> \n"
-    card += f"🧠 الذكاء: <code>{p['iq_score']}% IQ</code>\n"
-    card += f"🏆 الفوز: <code>{p['total_wins']}</code> جولة\n"
-    card += f"✅ الإجابات: <code>{p['correct_answers_count']}</code>\n"
+    card += f"💰 المحفظة: <code>{p.get('wallet', 0)}</code> \n"
+    card += f"🧠 الذكاء: <code>{p.get('iq_score', 0)}% IQ</code>\n"
+    card += f"🏆 الفوز: <code>{p.get('total_wins', 0)}</code> جولة\n"
+    card += f"✅ الإجابات: <code>{p.get('correct_answers_count', 0)}</code>\n"
     card += "<b>— — — — — — — — — — —</b>\n\n"
     
     card += "<b>🃏 مخزن الكروت الاستراتيجية:</b>\n"
@@ -763,16 +778,17 @@ async def format_profile_card(user_data: dict, user_id: int):
         card += "<b>— — — — — — — — — — —</b>\n"
     
     return card
-# ========================================
+
 def get_profile_keyboard():
     """تجهيز لوحة الأزرار الموحدة"""
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
-        InlineKeyboardButton("🛒 المتجر (تحت التطوير 🏗️)", callback_data="shop_dev"),
+        InlineKeyboardButton("🛒 المتجر 🏗️", callback_data="shop_dev"),
         InlineKeyboardButton("❌ إغلاق", callback_data="close_card")
     )
     return keyboard
-  # ========================================
+
+# ========================================
 async def process_bank_transfer(sender_id, amount, receiver_acc):
     """معالجة عملية التحويل البنكي"""
     try:
@@ -816,8 +832,56 @@ class Form(StatesGroup):
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
     waiting_for_quiz_name = State()
+# --- [ 2. مفاتيح الهاندلرز - Handlers ] ---
 
+# هاندلر "عني" و "عنه" والردود
+@dp.message_handler(lambda m: m.text in ["عني", "رتبتي", "نقاطي", "توبي", "محفظتي", "تخصصي", "بروفايلي"])
+@dp.message_handler(lambda m: m.reply_to_message and m.text in ["عنه", "رتبته", "نقاطه", "محفظته", "تخصصه", "بروفايله"])
+async def cmd_show_profile(message: types.Message):
+    # تحديد الشخص المستهدف (أنا أو الشخص الذي رددت عليه)
+    is_reply = True if message.reply_to_message else False
+    target_user = message.reply_to_message.from_user if is_reply else message.from_user
+    user_id = target_user.id
+    
+    # 1. إرسال حالة "جاري المعالجة"
+    status_msg = await message.reply("⏳ جاري البحث في السجلات...")
 
+    # 2. جلب البيانات من الجدول العالمي
+    user_data = await get_user_full_data(user_id)
+    
+    if not user_data:
+        await status_msg.delete()
+        txt = "❌ عذراً، هذا المستخدم لا يملك سجلاً عالمياً بعد." if is_reply else "❌ عذراً، ليس لديك سجل عالمي بعد. شارك في المسابقات أولاً!"
+        return await message.reply(txt)
+
+    # 3. تجهيز المحتوى (النص، الصورة، الكيبورد)
+    profile_text = await format_profile_card(user_data, user_id)
+    photo_id = await get_user_photo(user_id)
+    keyboard = get_profile_keyboard()
+
+    # 4. مسح رسالة "جاري البحث" وإرسال البطاقة
+    await status_msg.delete()
+    
+    try:
+        if photo_id:
+            await message.answer_photo(photo_id, caption=profile_text, parse_mode="HTML", reply_markup=keyboard)
+        else:
+            await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
+    except Exception as e:
+        # في حال فشل إرسال الصورة لسبب ما
+        await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
+        
+# --- [ 3. هاندلرز الكولباك ] ---
+@dp.callback_query_handler(lambda c: c.data == 'shop_dev')
+async def shop_callback(c: types.CallbackQuery):
+    await c.answer("⚠️ نظام المتجر قيد الإنشاء والبرمجة حالياً! 🛠️", show_alert=True)
+
+@dp.callback_query_handler(lambda c: c.data == 'close_card')
+async def close_callback(c: types.CallbackQuery):
+    try:
+        await c.message.delete()
+    except:
+        pass
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
@@ -923,40 +987,7 @@ async def activate_group_hub(message: types.Message):
     except Exception as e:
         logging.error(f"Activation Error: {e}")
         await message.reply("❌ حدث خطأ تقني في قاعدة البيانات.")
-# --- [ 2. مفاتيح الهاندلرز عني- Handlers ] ---
 
-@dp.message_handler(lambda m: m.text in ["عني", "رتبتي", "نقاطي", "توبي", "محفظتي", "تخصصي"])
-@dp.message_handler(lambda m: m.reply_to_message and m.text in ["عنه", "رتبته", "نقاطه", "محفظته", "تخصصه"])
-async def cmd_show_profile(message: types.Message):
-    # تحديد المستهدف
-    target_user = message.reply_to_message.from_user if message.reply_to_message else message.from_user
-    user_id = target_user.id
-
-    # استخدام الدوال المستقلة
-    user_data = await get_user_full_data(user_id)
-    
-    if not user_data:
-        return await message.reply("❌ عذراً، هذا المستخدم لا يملك سجلاً عالمياً بعد.")
-
-    # تجهيز المحتوى
-    profile_text = await format_profile_card(user_data, user_id)
-    photo_id = await get_user_photo(user_id) # دالتك لجلب الصورة
-    keyboard = get_profile_keyboard()
-
-    if photo_id:
-        await message.answer_photo(photo_id, caption=profile_text, parse_mode="HTML", reply_markup=keyboard)
-    else:
-        await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
-
-# هاندلرز الكولباك تظل كما هي لربط الأزرار بالمنطق
-@dp.callback_query_handler(lambda c: c.data == 'shop_dev')
-async def shop_callback(c: types.CallbackQuery):
-    await c.answer("⚠️ المتجر قيد الإنشاء والبرمجة حالياً! 🛠️", show_alert=True)
-
-@dp.callback_query_handler(lambda c: c.data == 'close_card')
-async def close_callback(c: types.CallbackQuery):
-    await c.message.delete()
-    
 # ==========================================
 @dp.message_handler(lambda m: m.text.startswith("تحويل"))
 async def cmd_transfer(message: types.Message):
@@ -975,7 +1006,6 @@ async def cmd_transfer(message: types.Message):
     # تنفيذ التحويل
     response = await process_bank_transfer(message.from_user.id, amount, receiver_acc)
     await message.answer(response, parse_mode="HTML")
-    
 # ==========================================
 # 2. تعديل أمر "تحكم" لضمان عدم العمل إلا بعد التفعيل
 # ==========================================
