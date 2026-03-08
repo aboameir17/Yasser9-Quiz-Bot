@@ -2585,6 +2585,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
         # 8️⃣ النتائج النهائية والتنظيف الرقمي
         for cid in all_chats:
             try: 
+                # أ. إرسال لوحة النتائج النهائية للمجموعة
                 await send_broadcast_final_results(
                     chat_id=cid, 
                     scores=group_scores, 
@@ -2594,6 +2595,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
             except Exception as e: 
                 logging.error(f"Error in final results: {e}")
             
+            # ب. تنظيف رسائل الأسئلة والنتائج المؤقتة
             for mid in messages_to_delete.get(cid, []):
                 try: await bot.delete_message(cid, mid)
                 except: pass
@@ -2601,6 +2603,14 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
             for r_mid in results_to_delete.get(cid, []):
                 try: await bot.delete_message(cid, r_mid)
                 except: pass
+
+        # 🚀 [ الخطوة الجوهرية: ترحيل النقاط للجدول العالمي ] 🚀
+        # توضع هنا خارج حلقة الـ for الخاصة بالمجموعات لضمان الترحيل لمرة واحدة فقط
+        try:
+            await sync_points_to_global_db(group_scores)
+            logging.info("✅ تم الانتهاء من ترحيل النقاط للجدول العالمي بنجاح.")
+        except Exception as sync_err:
+            logging.error(f"🚨 خطأ أثناء استدعاء الترحيل العالمي: {sync_err}")
 
     except Exception as e:
         logging.error(f"🚨 Global Engine Fatal Error: {e}")
@@ -2714,8 +2724,7 @@ async def unified_answer_checker(m: types.Message):
             # تسجيل الفائز في الذاكرة المؤقتة للمجموعة
                 quiz['winners'].append({"name": m.from_user.first_name, "id": uid})
 
-                # 🔵 رد الفوز
-                await m.reply(f"✅ <b>كفو يا {m.from_user.first_name}!</b>\nخطف أسرع إجابة وأغلق التحدي عالمياً! 🚀", parse_mode="HTML")    
+                
                 return
 
             else:
