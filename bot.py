@@ -978,20 +978,48 @@ async def cmd_show_profile_global(message: types.Message):
     else:
         await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
 
-# 3️⃣ معالجات أزرار الكولباك (Callback Handlers)
-@dp.callback_query_handler(lambda c: c.data == 'shop_dev')
-async def shop_callback(c: types.CallbackQuery):
-    """تنبيه المتجر قيد التطوير"""
-    await c.answer("⚠️ نظام المتجر والبنك قيد البرمجة حالياً! 🛠️\nسيتم إطلاق كروت التلميح قريباً.", show_alert=True)
+# --- [ معالج فتح الأقسام داخل المتجر ] ---
+@dp.callback_query_handler(lambda c: c.data.startswith('open_cat_'))
+async def shop_category_callback(c: types.CallbackQuery):
+    user_id = c.from_user.id
+    # حارس البعسسة: التأكد أن الضاغط هو صاحب الأمر الأصلي
+    if c.message.reply_to_message and c.message.reply_to_message.from_user.id != user_id:
+        return await c.answer("🚫 : المتجر ليس لك! افتح متجرك الخاص بطلب /shop", show_alert=True)
 
+    category = c.data.replace('open_cat_', '')
+    
+    # إذا كان القسم هو الكروت، نستخدم لوحة الكروت الاستراتيجية
+    if category == "cards":
+        # يمكنك تخصيص لوحة خاصة للكروت هنا
+        await c.answer("🃏 : قسم الكروت الاستراتيجية", show_alert=False)
+        # هنا نستدعي لوحة الكروت (التي برمجناها سابقاً)
+    else:
+        await c.message.edit_reply_markup(reply_markup=get_products_keyboard(category))
+        await c.answer(f"📂 : تم فتح القسم")
+
+# --- [ معالج زر العودة للمتجر الرئيسي ] ---
+@dp.callback_query_handler(lambda c: c.data == 'back_to_shop')
+async def back_to_shop_callback(c: types.CallbackQuery):
+    user_id = c.from_user.id
+    if c.message.reply_to_message and c.message.reply_to_message.from_user.id != user_id:
+        return await c.answer("🚫 : لا يمكنك التدخل!", show_alert=True)
+    
+    await c.message.edit_reply_markup(reply_markup=get_shop_main_keyboard())
+    await c.answer("🔙 : عدنا للمتجر")
+
+# --- [ معالج زر الإغلاق المحصن ] ---
 @dp.callback_query_handler(lambda c: c.data == 'close_card')
 async def close_callback(c: types.CallbackQuery):
-    """حذف رسالة البروفايل عند الضغط على إغلاق"""
+    user_id = c.from_user.id
+    # حماية من إغلاق لوحات الغير
+    if c.message.reply_to_message and c.message.reply_to_message.from_user.id != user_id:
+        return await c.answer("🚫 : لا يمكنك إغلاق لوحة غيرك!", show_alert=True)
+    
     try:
         await c.message.delete()
     except:
-        await c.answer("انتهت صلاحية الرسالة ⚠️")
-
+        await c.answer("❌ : تعذر الحذف")
+        
 # 1️⃣ مصفوفة البيانات الضخمة (توضع خارج الدالة كمتغير عام أو داخلها)
 ITEMS_DB = {
     # الألقاب الملكية
