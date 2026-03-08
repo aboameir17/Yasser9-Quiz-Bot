@@ -323,51 +323,45 @@ async def send_final_results2(chat_id, overall_scores, correct_count):
 
 async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="عام"):
     """
-    محرك ياسر المطور 2026: 
-    - الفوز: يمنح حصراً لجميع لاعبي المجموعة التي حققت أعلى إجمالي نقاط في الجولة.
-    - الإجابات: كل 10 نقاط = 1 إجابة صحيحة.
+    تحديث 2026: إصلاح ترحيل الفوز للمجموعة المتصدرة.
     """
     
-    # --- [ تحديث منطق تحديد المجموعة الفائزة ] ---
-    # نقوم بحساب إجمالي نقاط كل مجموعة لتحديد المتصدر الحقيقي
-    group_totals = {}
-    for gid, players in group_scores.items():
-        group_totals[gid] = sum(p.get('points', 0) for p in players.values())
+    # 1. تحديد المعيار الذهبي للفوز (إما عبر القائمة الممرة أو حساب النقاط)
+    # إذا كانت winners_list تحتوي على IDs المجموعات الفائزة
+    winning_groups = winners_list if winners_list else []
     
-    # استخراج الـ ID الخاص بالمجموعة صاحبة أعلى إجمالي نقاط
-    if group_totals:
-        top_group_id = max(group_totals, key=group_totals.get)
-    else:
-        top_group_id = None
-    
-    # 1. تجميع النقاط والبيانات الفردية
+    if not winning_groups:
+        # إذا لم تتوفر قائمة، نحسب المجموعة الأعلى نقاطاً
+        group_totals = {gid: sum(p.get('points', 0) for p in players.values()) 
+                        for gid, players in group_scores.items()}
+        if group_totals:
+            top_group_id = max(group_totals, key=group_totals.get)
+            winning_groups = [top_group_id]
+
     final_tallies = {}
     
     for cid, players in group_scores.items():
-        # هل هذه هي المجموعة التي كسرت الدنيا وجابت المركز الأول؟
-        is_the_champion_group = (cid == top_group_id)
+        # ✅ التحقق: هل هذه المجموعة ضمن قائمة الفائزين؟
+        is_the_champion_group = (cid in winning_groups)
         
         for uid, p_data in players.items():
             u_id = int(uid)
             if u_id not in final_tallies:
                 final_tallies[u_id] = {
-                    "name": p_data['name'], 
+                    "name": p_data.get('name', 'لاعب مجهول'), 
                     "pts": 0, 
                     "ans_count": 0, 
                     "won_round": 0
                 }
             
             current_group_pts = p_data.get('points', 0)
-            
-            # تحديث حصيلة اللاعب
             final_tallies[u_id]["pts"] += current_group_pts
-            
-            # حساب الإجابات (كل 10 نقاط = 1 إجابة)
             final_tallies[u_id]["ans_count"] += (current_group_pts // 10)
             
-            # ✅ التعديل الذهبي: الفوز يذهب فقط لأعضاء المجموعة المتصدرة
+            # ✅ تفعيل الفوز: إذا كانت المجموعة فائزة، يأخذ كل لاعب فيها 1
             if is_the_champion_group:
                 final_tallies[u_id]["won_round"] = 1
+
 
     # 2. المزامنة مع قاعدة البيانات (Payload)
     for uid, data in final_tallies.items():
