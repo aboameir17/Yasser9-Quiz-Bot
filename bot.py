@@ -992,153 +992,145 @@ async def close_callback(c: types.CallbackQuery):
     except:
         await c.answer("انتهت صلاحية الرسالة ⚠️")
 
-# 1️⃣ دالة تنسيق قالب المتجر النصي
-async def format_shop_bazaar_card(user_wallet: int):
-    """
-    تنسيق واجهة المتجر الملكي - نسخة 2026
-    تصميم باحترافية جهة اليمين مع تقسيمات ذكية.
-    """
-    
-    # 🎨 رأس القالب (التصميم العام)
-    shop = f"<b>       🛒 : الـمـتـجـر الـعـالـمـي الـكـبـيـر 🛒</b>\n"
-    shop += "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
-    
-    # قسم رصيد اللاعب (الأهم ليعرف كم يملك)
-    shop += f"💰 <b>: رصيدك الحالي ⇠ <code>{user_wallet}</code> ن</b>\n"
-    shop += "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
-    
-    # القسم الأول: مخزن الكروت الاستراتيجية (أسلحة اللعب)
-    shop += "<b>🃏 : قسم الـكـروت الاسـتـراتـيـجـيـة :</b>\n"
-    shop += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
-    shop += f"⏳ <b>: كرت الوقت ⇠ <code>100</code> ن</b>\n"
-    shop += f"      ⇠ [ 💡 لتمديد وقت الإجابة ]\n"
-    shop += f"👁 <b>: كرت الإجابة ⇠ <code>250</code> ن</b>\n"
-    shop += f"      ⇠ [ 💡 لكشف الإجابة الصحيحة ]\n"
-    shop += f"💡 <b>: كرت التلميح ⇠ <code>150</code> ن</b>\n"
-    shop += f"      ⇠ [ 💡 لإظهار لمحة عن الحل ]\n"
-    shop += f"🛡 <b>: كرت الدرع ⇠ <code>300</code> ن</b>\n"
-    shop += f"      ⇠ [ 💡 للحماية من خصم النقاط ]\n"
-    shop += "━━━━━━━━━━━━━━━━━━\n\n"
-    
-    # القسم الثاني: المقتنيات النادرة والأوسمة (للفخر والتباهي)
-    shop += "<b>📦 : قـسـم الـمـقـتـنـيـات والـأوسـمـة :</b>\n"
-    shop += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
-    shop += f"🎖 <b>: وسام الشجاعة ⇠ <code>5000</code> ن</b>\n"
-    shop += f"🏅 <b>: تاج الذكاء ⇠ <code>10000</code> ن</b>\n"
-    shop += f"📜 <b>: لقب 'الخبير' ⇠ <code>3000</code> ن</b>\n"
-    shop += f"⚔ <b>: سيف القنص ⇠ <code>7000</code> ن</b>\n"
-    shop += "<b>━━━━━━━━━━━━━━━━━━</b>\n\n"
-    
-    # ذيل القالب
-    shop += "✅ <b>: اختر القسم من الأزرار للبدء بالشراء</b>\n"
-    shop += "⚠️ <b>: تأكد من رصيدك قبل إتمام العملية</b>"
+# 1️⃣ مصفوفة البيانات الضخمة (توضع خارج الدالة كمتغير عام أو داخلها)
+ITEMS_DB = {
+    # الألقاب الملكية
+    "royal": {
+        "legend": {"name": "✨ الأسطورة", "price": 5000},
+        "king": {"name": "👑 ملك المعرفة", "price": 15000},
+        "scholar": {"name": "📚 المحقق العلامة", "price": 4000},
+        "genius": {"name": "🧠 العبقري الفذ", "price": 7000},
+        "noble": {"name": "💎 النبيل", "price": 5500},
+        "sultan": {"name": "⚜️ سلطان الحرف", "price": 12000},
+        "wise": {"name": "📜 الحكيم", "price": 3500},
+        "knight": {"name": "🛡️ فارس الكلمة", "price": 4500},
+        "leader": {"name": "🚩 القائد", "price": 10000}
+    },
+    # الألقاب البناتية
+    "girls": {
+        "princess": {"name": "🌸 أميرة الحرف", "price": 4000},
+        "rare": {"name": "💎 نادرة الوجود", "price": 6000},
+        "queen": {"name": "👑 الملكة", "price": 15000},
+        "rose_t": {"name": "🌹 وردة المجموعة", "price": 3000},
+        "pearl": {"name": "🐚 لؤلؤة النقاء", "price": 5500},
+        "moon": {"name": "🌙 قمر الزمان", "price": 7000},
+        "butterfly": {"name": "🦋 الفراشة", "price": 2500},
+        "diamond": {"name": "💠 الماسة", "price": 12000},
+        "melody": {"name": "🎶 لحن الوفاء", "price": 5000}
+    },
+    # الورود والهدايا
+    "gifts": {
+        "rose_red": {"name": "🌹 باقة ورد أحمر", "price": 1000},
+        "tulip": {"name": "🌷 زهرة التوليب", "price": 1200},
+        "bouquet": {"name": "💐 الباقة الملكية", "price": 5000},
+        "sunflower": {"name": "🌻 إشراقة أمل", "price": 1500},
+        "jasmine": {"name": "⚪ ياسمين الشام", "price": 1100},
+        "choc": {"name": "🍫 صندوق شوكولا", "price": 2000},
+        "gift_b": {"name": "🎁 صندوق المفاجآت", "price": 3000},
+        "ring": {"name": "💍 خاتم الألماس", "price": 20000}
+    },
+    # المقتنيات النادرة
+    "rare": {
+        "crown": {"name": "🏅 تاج الذكاء", "price": 10000},
+        "sword": {"name": "⚔️ سيف القنص", "price": 7000},
+        "eagle": {"name": "🦅 الصقر الجارح", "price": 13000},
+        "lamp": {"name": "🪔 مصباح علاء الدين", "price": 18000},
+        "trophy": {"name": "🏆 كأس العالم", "price": 25000},
+        "dragon": {"name": "🐲 التنين الأسطوري", "price": 50000},
+        "phoenix": {"name": "🐦 طائر الفينيق", "price": 30000},
+        "throne": {"name": "🪑 عرش المعرفة", "price": 100000}
+    }
+}
 
-    return shop
-
-
-# 2️⃣ دالة لوحة الأزرار (Keyboard) - مقسمة حسب الأقسام
+# 2️⃣ دالة لوحة التحكم الرئيسية (الأقسام)
 def get_shop_main_keyboard():
-    """تجهيز لوحة الأزرار الموحدة للمتجر (أزرار للشراء)"""
     keyboard = InlineKeyboardMarkup(row_width=2)
-    
-    # زر تأكيدي لإظهار رصيد اللاعب (إضافة لمسة "شريك")
-    keyboard.add(InlineKeyboardButton("💰 : محفظتي", callback_data="show_wallet"))
-    
-    # صف واحد للكروت
     keyboard.add(
-        InlineKeyboardButton("⏳ : شراء وقت", callback_data="buy_card_time"),
-        InlineKeyboardButton("👁 : شراء إجابة", callback_data="buy_card_answer")
+        InlineKeyboardButton("👑 : الألقاب الملكية", callback_data="open_cat_royal"),
+        InlineKeyboardButton("🌸 : الألقاب البناتية", callback_data="open_cat_girls")
     )
-    # صف ثاني للكروت
     keyboard.add(
-        InlineKeyboardButton("💡 : شراء تلميح", callback_data="buy_card_hint"),
-        InlineKeyboardButton("🛡 : شراء درع", callback_data="buy_card_shield")
+        InlineKeyboardButton("💐 : الورود والهدايا", callback_data="open_cat_gifts"),
+        InlineKeyboardButton("⚔️ : مقتنيات نادرة", callback_data="open_cat_rare")
     )
-    
-    # زر للمقتنيات
-    keyboard.add(InlineKeyboardButton("📦 : شراء مقتنيات", callback_data="shop_items"))
-    
-    # زر الرجوع للبروفايل أو الإغلاق
     keyboard.add(
-        InlineKeyboardButton("👤 : البروفايل", callback_data="open_profile"),
+        InlineKeyboardButton("🃏 : كروت اللعب", callback_data="open_cat_cards"),
         InlineKeyboardButton("❌ : إغلاق المتجر", callback_data="close_card")
     )
     return keyboard
+
+# 3️⃣ دالة توليد أزرار المنتجات داخل القسم
+def get_products_keyboard(category):
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    products = ITEMS_DB.get(category, {})
     
-@bot.callback_query_handler(func=lambda call: call.data.startswith('buy_card_'))
-async def process_card_purchase(call):
+    for p_id, p_info in products.items():
+        btn_text = f"{p_info['name']} | {p_info['price']}ن"
+        keyboard.insert(InlineKeyboardButton(btn_text, callback_data=f"buy_item_{p_id}_{category}"))
+    
+    keyboard.add(InlineKeyboardButton("⬅️ : العودة للمتجر", callback_data="back_to_shop"))
+    return keyboard
+
+# 4️⃣ المعالج الشامل للضغطات (Callback Handler)
+@bot.callback_query_handler(func=lambda call: True)
+async def shop_master_handler(call):
     user_id = call.from_user.id
-    # استخراج نوع الكرت من الـ callback_data
-    # التنسيق المتوقع: buy_card_time, buy_card_hint, etc.
-    card_map = {
-        "time": {"name": "كرت الوقت ⏳", "key": "time_card", "price": 100},
-        "answer": {"name": "كرت الإجابة 👁", "key": "answer_card", "price": 250},
-        "hint": {"name": "كرت التلميح 💡", "key": "hint_card", "price": 150},
-        "shield": {"name": "كرت الدرع 🛡", "key": "shield_card", "price": 300}
-    }
-    
-    card_type = call.data.replace('buy_card_', '')
-    card_info = card_map.get(card_type)
-    
-    if not card_info:
-        return await bot.answer_callback_query(call.id, "❌ : صنف غير معروف !")
+    data = call.data
 
-    try:
-        # 1. جلب بيانات اللاعب الحالية
-        res = supabase.table("users_global_profile").select("*").eq("user_id", user_id).execute()
-        if not res.data:
-            return await bot.answer_callback_query(call.id, "❌ : ليس لديك حساب مسجل !")
-        
-        user_data = res.data[0]
-        current_wallet = user_data.get('wallet', 0)
-        cards_inventory = user_data.get('cards_inventory') or {}
-        
-        # التأكد من نوع بيانات الكروت (تحويل من String إذا لزم الأمر)
-        if isinstance(cards_inventory, str):
-            import json
-            cards_inventory = json.loads(cards_inventory)
+    # حارس البعسسة
+    if call.message.reply_to_message and call.message.reply_to_message.from_user.id != user_id:
+        return await bot.answer_callback_query(call.id, "🚫 : المتجر ليس لك!", show_alert=True)
 
-        # 2. التحقق من القدرة المالية
-        if current_wallet < card_info['price']:
-            return await bot.answer_callback_query(
-                call.id, 
-                f"⚠️ : عذراً! رصيدك ({current_wallet}) غير كافٍ لشراء {card_info['name']}", 
-                show_alert=True
-            )
+    # فتح قسم معين
+    if data.startswith("open_cat_"):
+        cat = data.replace("open_cat_", "")
+        await bot.edit_message_reply_markup(
+            call.message.chat.id, call.message.message_id, 
+            reply_markup=get_products_keyboard(cat)
+        )
+        await bot.answer_callback_query(call.id, "📂 : تم فتح القسم")
 
-        # 3. تنفيذ عملية الشراء (الخصم والإضافة)
-        new_wallet = current_wallet - card_info['price']
-        cards_inventory[card_info['key']] = cards_inventory.get(card_info['key'], 0) + 1
-        
-        # 4. تحديث قاعدة البيانات
-        upd_res = supabase.table("users_global_profile").update({
-            "wallet": new_wallet,
-            "cards_inventory": cards_inventory
-        }).eq("user_id", user_id).execute()
+    # العودة للمتجر الرئيسي
+    elif data == "back_to_shop":
+        await bot.edit_message_reply_markup(
+            call.message.chat.id, call.message.message_id, 
+            reply_markup=get_shop_main_keyboard()
+        )
 
-        if upd_res.data:
-            # تحديث رسالة المتجر لتعكس الرصيد الجديد
-            new_text = await format_shop_bazaar_card(new_wallet)
+    # عملية الشراء الفعلية
+    elif data.startswith("buy_item_"):
+        parts = data.split("_") # buy_item_id_category
+        item_id, cat = parts[2], parts[3]
+        item_info = ITEMS_DB[cat][item_id]
+
+        try:
+            # جلب بيانات المستخدم
+            res = supabase.table("users_global_profile").select("*").eq("user_id", user_id).execute()
+            u_data = res.data[0]
+            if u_data['wallet'] < item_info['price']:
+                return await bot.answer_callback_query(call.id, "⚠️ : رصيدك لا يكفي!", show_alert=True)
+
+            # تحديث المحفظة والمقتنيات
+            new_inv = u_data.get('inventory') or []
+            new_inv.append(item_info['name'])
+            
+            supabase.table("users_global_profile").update({
+                "wallet": u_data['wallet'] - item_info['price'],
+                "inventory": new_inv
+            }).eq("user_id", user_id).execute()
+
+            await bot.answer_callback_query(call.id, f"✅ : مبروك شراء {item_info['name']}", show_alert=True)
+            # تحديث النص لإظهار الرصيد الجديد
             await bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=new_text,
-                parse_mode="HTML",
-                reply_markup=get_shop_main_keyboard()
+                await format_shop_bazaar_card(u_data['wallet'] - item_info['price']),
+                call.message.chat.id, call.message.message_id, 
+                parse_mode="HTML", reply_markup=get_products_keyboard(cat)
             )
-            await bot.answer_callback_query(call.id, f"✅ : تم شراء {card_info['name']} بنجاح !", show_alert=False)
-        
-    except Exception as e:
-        import logging
-        logging.error(f"❌ : خطأ في عملية الشراء : {e}")
-        await bot.answer_callback_query(call.id, "❌ : حدث خطأ فني أثناء الشراء .")
+        except Exception as e:
+            await bot.answer_callback_query(call.id, "❌ : عطل فني!")
 
-@bot.callback_query_handler(func=lambda call: call.data == "close_card")
-async def close_ui(call):
-    try:
+    elif data == "close_card":
         await bot.delete_message(call.message.chat.id, call.message.message_id)
-    except:
-        await bot.answer_callback_query(call.id, "❌ : لا يمكن حذف الرسالة !")
         
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
