@@ -322,21 +322,30 @@ async def send_final_results2(chat_id, overall_scores, correct_count):
     msg += "تهانينا للفائزين وحظاً أوفر لمن لم يحالفه الحظ! ❤️"
     await bot.send_message(chat_id, msg, parse_mode="HTML")
 
-    
 async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="عام"):
     """
     محرك ياسر المطور 2026: 
-    - الفوز: يمنح لجميع لاعبي المجموعة التي احتلت المركز الأول فقط.
+    - الفوز: يمنح حصراً لجميع لاعبي المجموعة التي حققت أعلى إجمالي نقاط في الجولة.
     - الإجابات: كل 10 نقاط = 1 إجابة صحيحة.
     """
-    # تحديد المجموعة المتصدرة (أول مجموعة في القائمة المرسلة)
-    top_group_id = winners_list[0] if winners_list else None
     
-    # 1. تجميع النقاط والبيانات
+    # --- [ تحديث منطق تحديد المجموعة الفائزة ] ---
+    # نقوم بحساب إجمالي نقاط كل مجموعة لتحديد المتصدر الحقيقي
+    group_totals = {}
+    for gid, players in group_scores.items():
+        group_totals[gid] = sum(p.get('points', 0) for p in players.values())
+    
+    # استخراج الـ ID الخاص بالمجموعة صاحبة أعلى إجمالي نقاط
+    if group_totals:
+        top_group_id = max(group_totals, key=group_totals.get)
+    else:
+        top_group_id = None
+    
+    # 1. تجميع النقاط والبيانات الفردية
     final_tallies = {}
     
     for cid, players in group_scores.items():
-        # هل هذه هي المجموعة صاحبة المركز الأول؟
+        # هل هذه هي المجموعة التي كسرت الدنيا وجابت المركز الأول؟
         is_the_champion_group = (cid == top_group_id)
         
         for uid, p_data in players.items():
@@ -351,22 +360,22 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
             
             current_group_pts = p_data.get('points', 0)
             
-            # تحديث إجمالي النقاط
+            # تحديث حصيلة اللاعب
             final_tallies[u_id]["pts"] += current_group_pts
             
             # حساب الإجابات (كل 10 نقاط = 1 إجابة)
             final_tallies[u_id]["ans_count"] += (current_group_pts // 10)
             
-            # ✅ التعديل الجديد: إذا كان اللاعب ينتمي للمجموعة المتصدرة، يحصل على فوز
+            # ✅ التعديل الذهبي: الفوز يذهب فقط لأعضاء المجموعة المتصدرة
             if is_the_champion_group:
                 final_tallies[u_id]["won_round"] = 1
 
-    # 2. الربط مع سوبابيس (Payload)
+    # 2. المزامنة مع قاعدة البيانات (Payload)
     for uid, data in final_tallies.items():
         try:
             res = supabase.table("users_global_profile").select("*").eq("user_id", uid).execute()
             
-            # دالات الحساب (الرتبة والتخصص) تظل كما هي لضمان المنطق العلمي
+            # دالات الحساب (الرتبة والتخصص)
             def calculate_rank(total_ans):
                 if total_ans <= 100: return "طالب مبتدئ"
                 elif 101 <= total_ans <= 250: return "طالب ثانوية"
@@ -386,10 +395,14 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
 
             if res.data:
                 current = res.data[0]
+                
+                # تحديث إحصائيات الأقسام
                 current_stats = current.get('category_stats') or {}
                 current_stats[cat_name] = current_stats.get(cat_name, 0) + data['ans_count']
                 
                 total_ans_combined = (current.get('correct_answers_count') or 0) + data['ans_count']
+                
+                # تحديث IQ (نقطة لكل 5 إجابات)
                 new_iq = min(150, (current.get('iq_score') or 50) + (data['ans_count'] // 5))
 
                 upd_payload = {
@@ -397,7 +410,7 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                     "total_points": (current.get('total_points') or 0) + data['pts'],
                     "wallet": (current.get('wallet') or 0) + data['pts'],
                     "correct_answers_count": total_ans_combined,
-                    "total_wins": (current.get('total_wins') or 0) + data['won_round'],
+                    "total_wins": (current.get('total_wins') or 0) + data['won_round'], # يضاف 1 فقط للفائزين
                     "iq_score": new_iq,
                     "educational_rank": calculate_rank(total_ans_combined),
                     "category_stats": current_stats,
@@ -406,10 +419,10 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                 }
                 
                 supabase.table("users_global_profile").update(upd_payload).eq("user_id", uid).execute()
-                logging.info(f"✅ تم تحديث بيانات بطل المجموعة المتصدرة: {data['name']}")
+                logging.info(f"✅ تم تحديث بيانات اللاعب: {data['name']} (فوز: {data['won_round']})")
 
             else:
-                # إنشاء سجل للاعب جديد مع احتساب الفوز إذا كان في المجموعة الأولى
+                # إنشاء سجل للاعب جديد
                 first_stats = {cat_name: data['ans_count']}
                 new_payload = {
                     "user_id": uid,
@@ -425,15 +438,14 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                     "cards_inventory": {"time_card": 0, "answer_card": 0, "shield_card": 0}
                 }
                 supabase.table("users_global_profile").insert(new_payload).execute()
-                logging.info(f"🆕 بروفايل جديد لبطل المجموعة: {data['name']}")
+                logging.info(f"🆕 بروفايل جديد للاعب: {data['name']}")
 
         except Exception as e:
             logging.error(f"❌ خطأ في ترحيل بيانات {uid}: {e}")
-            
+
 # ==========================================
 # 1. كيبوردات التحكم الرئيسية (Main Keyboards)
 # ==========================================
-
 def get_main_control_kb(user_id):
     """توليد كيبورد لوحة التحكم الرئيسية مشفرة بآيدي المستخدم"""
     kb = InlineKeyboardMarkup(row_width=2).add(
@@ -458,6 +470,7 @@ async def custom_add_menu(c, owner_id, state):
     )
     await c.answer()
 
+
 # ==========================================
 # ---الدالة التي طلبتها (تأكد أنها موجودة بهذا الاسم) ---
 # ==========================================
@@ -467,7 +480,7 @@ def get_categories_kb(user_id):
     kb.add(InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_cats_{user_id}"))
     kb.add(InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_main_{user_id}"))
     
-    return kb
+     return kb
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
@@ -517,7 +530,6 @@ def get_setup_quiz_kb(user_id):
         InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
     )
     return kb
-
 # ==========================================
 # الدوال المساعدة المحدثة (حماية + أسماء حقيقية)
 # ==========================================
@@ -856,7 +868,6 @@ def get_profile_keyboard():
         InlineKeyboardButton("❌ إغلاق", callback_data="close_card")
     )
     return keyboard
-
 # ========================================
 async def process_bank_transfer(sender_id, amount, receiver_acc):
     """معالجة عملية التحويل البنكي"""
@@ -901,7 +912,6 @@ class Form(StatesGroup):
     waiting_for_ans2 = State()
     waiting_for_new_cat_name = State()
     waiting_for_quiz_name = State()
-
 # --- [ 2. مفاتيح الهاندلرز - Handlers ] ---
 # 2️⃣ المعالج الرئيسي للأوامر (عني، رتبتي، إلخ)
 @dp.message_handler(lambda m: m.text in ["عني", "رتبتي", "نقاطي", "محفظتي", "بروفايلي"])
@@ -1004,6 +1014,7 @@ async def cancel_quiz_handler(c: types.CallbackQuery):
     cancelled_groups.add(chat_id)
     await c.message.edit_text("🚫 **تم إلغاء المسابقة في هذه المجموعة.**")
     await c.answer("تم الإلغاء بنجاح", show_alert=True)
+
 # ==========================================
 # 6. أمر التفعيل (Request Activation)
 # ==========================================
