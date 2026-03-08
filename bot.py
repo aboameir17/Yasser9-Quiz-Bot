@@ -1160,6 +1160,36 @@ async def shop_master_handler(call):
     elif data == "close_card":
         await bot.delete_message(call.message.chat.id, call.message.message_id)
         
+# --- [ أمر فتح المتجر بالعربي ] ---
+@dp.message_handler(commands=['متجر', 'سوق', 'بزار']) # أوامر بالسلاش
+@dp.message_handler(lambda message: message.text in ["متجر", "سوق", "بزار", "المتجر"]) # كلمات مباشرة
+async def open_global_shop(message: types.Message):
+    """
+    فتح بوابة المتجر العالمي الكبير 2026
+    """
+    user_id = message.from_user.id
+    try:
+        # 1. جلب رصيد المحفظة من سوبابيس
+        res = supabase.table("users_global_profile").select("wallet").eq("user_id", user_id).execute()
+        
+        # إذا كان اللاعب جديداً وليس لديه سجل، نعتبر رصيده 0
+        wallet = res.data[0]['wallet'] if res.data and len(res.data) > 0 else 0
+        
+        # 2. تجهيز القالب النصي الفخم
+        shop_text = await format_shop_bazaar_card(wallet)
+        
+        # 3. إرسال المتجر مع لوحة الأزرار الملكية
+        await message.reply(
+            shop_text, 
+            reply_markup=get_shop_main_keyboard(), 
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        import logging
+        logging.error(f"❌ خطأ في فتح المتجر: {e}")
+        await message.reply("<b>⚠️ : عذراً يا شريك.. المتجر مغلق مؤقتاً لتفريغ البضاعة الجديدة! 🚚</b>", parse_mode="HTML")
+
 # ==========================================
 # 5. الترحيب التلقائي بصورة البوت
 # ==========================================
