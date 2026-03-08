@@ -299,6 +299,7 @@ async def send_creative_results2(chat_id, correct_ans, winners, overall_scores):
     try:
         # كلمة return هنا هي المحرك الأساسي لعملية الحذف لاحقاً
         return await bot.send_message(chat_id, msg, parse_mode="HTML")
+    
     except Exception as e:
         import logging
         logging.error(f"⚠️ HTML Error in Private Results: {e}")
@@ -354,8 +355,14 @@ async def send_final_results2(chat_id, overall_scores, total_q):
         msg += "✅ <b>: تم ترحيل الألقاب والجوائز بنجاح</b>"
 
         await bot.send_message(chat_id, msg, parse_mode="HTML")
+        
+    except Exception as e:
+        import logging
+        logging.error(f"❌ خطأ في العملية السابقة: {e}")
 
-
+# =========================================
+# تأكد أن الدالة تبدأ من بداية السطر تماماً (بدون مسافات جهة اليسار)
+# ==========================================
 
 async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="عام", is_special=False):
     """
@@ -503,8 +510,6 @@ async def custom_add_menu(c, owner_id, state):
         parse_mode="Markdown"
     )
     await c.answer()
-
-
 # ==========================================
 # ---الدالة التي طلبتها (تأكد أنها موجودة بهذا الاسم) ---
 # ==========================================
@@ -634,6 +639,7 @@ async def render_categories_list(message, eligible_cats, selected_cats, owner_id
     
     kb.add(InlineKeyboardButton("🔙 رجوع", callback_data=f"setup_quiz_{owner_id}"))
     await message.edit_text("📂 <b>اختر الأقسام المطلوبة:</b>", reply_markup=kb, parse_mode="HTML")
+
 # ==========================================
 async def render_final_settings_panel(message, data, owner_id):
     """الدالة الموحدة لعرض لوحة الإعدادات النهائية مشفرة بآيدي المالك"""
@@ -689,7 +695,6 @@ async def get_group_status(chat_id):
     except Exception as e:
         logging.error(f"Error checking group status: {e}")
         return "error"
-
 # ==========================================
 async def run_visual_countdown(group_msgs, kb, base_info):
     """دالة العد التنازلي البصري - آخر 10 ثوانٍ 🔥"""
