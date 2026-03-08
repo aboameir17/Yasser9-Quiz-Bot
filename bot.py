@@ -306,21 +306,59 @@ async def send_creative_results2(chat_id, correct_ans, winners, overall_scores):
         clean_msg = msg.replace("<b>","").replace("</b>","").replace("<code>","").replace("</code>","")
         return await bot.send_message(chat_id, clean_msg)
         
-async def send_final_results2(chat_id, overall_scores, correct_count):
-    """تصميم ياسر لرسالة ختام المسابقة"""
-    msg =  "━━━━━━━━━━━━━━━━━━━\n"
-    msg += "🏁 <b>انـتـهـت الـمـسـابـقـة بنجاح!</b> 🏁\n"
-    msg += "شكرًا لكل من شارك وأمتعنا بمنافسته. 🌹\n"
-    msg += "━━━━━━━━━━━━━━━━━━━\n\n"
-    msg += "━━ 🥇 المراكز الأولى 🥇 ━━\n\n"
-    sorted_players = sorted(overall_scores.values(), key=lambda x: x['points'], reverse=True)
-    medals = ["🥇", "🥈", "🥉"]
-    for i, player in enumerate(sorted_players[:3]):
-        msg += f"{medals[i]} المركز {'الأول' if i==0 else 'الثاني' if i==1 else 'الثالث'}: <b>{player['name']}</b> - [🏆 {player['points']}]\n"
-    msg += "\n━━━━━━━━━━━━━━━━━━━\n\n━━ 📊 إحصائيات التفاعل 📊 ━━\n"
-    msg += "تهانينا للفائزين وحظاً أوفر لمن لم يحالفه الحظ! ❤️"
-    await bot.send_message(chat_id, msg, parse_mode="HTML")
+async def send_final_results2(chat_id, overall_scores, total_q):
+    """
+    🥇 تصميم ياسر الملكي - نسخة المسابقات الخاصة V3
+    ضبط المحاذاة اليمينية باستخدام الفواصل النقطية :
+    """
+    try:
+        # 🎨 رأس القالب
+        msg =  "━━━━━━━━━━━━━━━━━━━\n"
+        msg += "🏁 <b>: انـتـهـت الـمـسـابـقـة الـخـاصـة</b>\n"
+        msg += "🔥 <b>: حـصـاد الـعـمـالـقـة والأبـطـال</b>\n"
+        msg += "━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        msg += "🏆 <b>: { لـوحـة الـشـرف والـتـتـويـج }</b>\n\n"
 
+        # ترتيب اللاعبين حسب النقاط
+        sorted_players = sorted(overall_scores.values(), key=lambda x: x['points'], reverse=True)
+        max_possible_pts = total_q * 10 
+        
+        # الأيقونات مع الفواصل لضبط اليمين
+        medals = ["🥇 :", "🥈 :", "🥉 :", "👤 :", "👤 :"]
+
+        for i, player in enumerate(sorted_players[:10]):  # عرض توب 10
+            # اختيار الأيقونة المناسبة
+            icon = medals[i] if i < 5 else "👤 :"
+            
+            # حساب IQ الجولة
+            round_iq = min(int((player['points'] / max_possible_pts) * 100) + 40, 100) if max_possible_pts > 0 else 40
+            
+            # السطر الذهبي (محاذاة من اليمين)
+            msg += f"{icon} <b>{player['name']}</b>\n"
+            msg += f"🏅 <b>:</b> المركز ( {i+1} ) ⇠ <b>{player['points']}</b> ن\n"
+            msg += f"🧠 <b>:</b> ذكاء الجولة ⇠ <code>{round_iq}% IQ</code>\n"
+            
+            # تمييز بطل المسابقة الخاصة
+            if i == 0:
+                msg += "✨ <b>: [+1 🔥 فـوز خـاص مـسـجـل]</b>\n"
+                
+            msg += "┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅┅\n"
+
+        # 📊 ذيل القالب
+        msg += "\n📊 <b>: إحـصـائـيـات الـتـفـاعـل</b>\n"
+        msg += f"📋 <b>:</b> إجمالي الأسئلة ⇠ ( <b>{total_q}</b> )\n"
+        msg += f"👥 <b>:</b> عدد المشاركين ⇠ ( <b>{len(overall_scores)}</b> )\n"
+        msg += "━━━━━━━━━━━━━━━━━━━\n"
+        msg += "❤️ <b>: تهانينا للفائزين وحظاً أوفر للبقية</b>\n"
+        msg += "✅ <b>: تم ترحيل الألقاب والجوائز بنجاح</b>"
+
+        await bot.send_message(chat_id, msg, parse_mode="HTML")
+
+    except Exception as e:
+        import logging
+        logging.error(f"❌ : خطأ في نتائج المسابقة الخاصة : {e}")
+        
 async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="عام"):
     """
     تحديث 2026: إصلاح ترحيل الفوز للمجموعة المتصدرة.
