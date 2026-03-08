@@ -2629,7 +2629,7 @@ async def engine_global_broadcast(chat_ids, quiz_data, owner_name, current_quiz_
                     break
                 
                 # تقليل النوم لـ 0.05 لضمان حساسية عالية جداً
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.08)
             # 6️⃣ إغلاق السؤال وتحديث النقاط (داخل حلقة الأسئلة)
             res_tasks = []
             
