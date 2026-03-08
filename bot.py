@@ -473,7 +473,8 @@ def get_categories_kb(user_id):
     kb.add(InlineKeyboardButton("📋 قائمة الأقسام", callback_data=f"list_cats_{user_id}"))
     kb.add(InlineKeyboardButton("🔙 الرجوع لصفحة التحكم", callback_data=f"back_to_main_{user_id}"))
     
-     return kb
+    return kb
+
 # ==========================================
 # 2. دوال عرض الواجهات الموحدة (UI Controllers)
 # ==========================================
@@ -523,6 +524,7 @@ def get_setup_quiz_kb(user_id):
         InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data=f"back_to_control_{user_id}")
     )
     return kb
+
 # ==========================================
 # الدوال المساعدة المحدثة (حماية + أسماء حقيقية)
 # ==========================================
@@ -646,7 +648,6 @@ async def get_group_status(chat_id):
     except Exception as e:
         logging.error(f"Error checking group status: {e}")
         return "error"
-
 
 # ==========================================
 async def run_visual_countdown(group_msgs, kb, base_info):
