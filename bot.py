@@ -779,40 +779,89 @@ async def get_user_full_data(user_id: int):
         return None
 
 async def format_profile_card(user_data: dict, user_id: int):
-    """تنسيق البطاقة الفخمة من بيانات الجدول"""
+    """تنسيق البطاقة الفخمة مع شريط التقدم وتفاصيل التخصصات"""
     p = user_data
-    # معالجة حقل الكروت (JSONB)
+    ans_count = p.get('correct_answers_count', 0)
+    
+    # --- [ 1. منطق حساب الرتبة والتقدم ] ---
+    ranks_map = [
+        ("طالب مبتدئ", 100),
+        ("طالب ثانوية", 250),
+        ("طالب جامعي", 500),
+        ("بروفيسور", 1000),
+        ("عالم عبقري", 2000),
+        ("أسطورة المعرفة", 5000)
+    ]
+    
+    current_rank = "طالب مبتدئ"
+    next_rank_name = "القمة"
+    target_pts = 5000
+    prev_pts = 0
+    
+    for i, (name, limit) in enumerate(ranks_map):
+        if ans_count <= limit:
+            current_rank = name
+            next_rank_name = ranks_map[i+1][0] if i+1 < len(ranks_map) else "القمة"
+            target_pts = limit
+            prev_pts = ranks_map[i-1][1] if i > 0 else 0
+            break
+
+    # حساب النسبة المئوية ورسم الشريط
+    progress_needed = target_pts - prev_pts
+    progress_done = ans_count - prev_pts
+    percentage = min(100, max(0, (progress_done / progress_needed) * 100))
+    filled_blocks = int(percentage // 10)
+    progress_bar = "🟢" * filled_blocks + "⚪" * (10 - filled_blocks)
+
+    # --- [ 2. معالجة التخصصات من category_stats ] ---
+    stats = p.get('category_stats', {})
+    if isinstance(stats, str):
+        import json
+        try: stats = json.loads(stats)
+        except: stats = {}
+    
+    specialties_list = ""
+    if stats:
+        # ترتيب التخصصات من الأكثر إجابة للأقل
+        sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
+        for i, (cat, val) in enumerate(sorted_stats):
+            icon = "👑" if i == 0 else "🔹" # التاج للأول
+            specialties_list += f"{icon} خبير {cat}: <code>{val}</code> إجابة\n"
+    else:
+        specialties_list = "🔹 لا توجد تخصصات مسجلة بعد.\n"
+
+    # --- [ 3. بناء نص البطاقة النهائي ] ---
     cards = p.get('cards_inventory', {})
     if isinstance(cards, str):
         import json
         try: cards = json.loads(cards)
         except: cards = {}
 
-    # بناء النص بتنسيق HTML فخم
     card = f"<b>       👤 بـروفـايـل الـمـتـمـيـز 👤</b>\n"
     card += "<b>— — — — — — — — — — —</b>\n"
     card += f"🆔 الاسم: <a href='tg://user?id={user_id}'>{p.get('user_name', 'مشارك جديد')}</a>\n"
-    card += f"💳 الحساب البنكي: <code>#{p.get('bank_account', '----')}</code>\n"
-    card += f"🎓 الرتبة: <b>{p.get('educational_rank', 'طالب')}</b>\n"
-    card += f"🎖️ التخصص: <b>{p.get('specialty_title', 'هاوي')} 🏆</b>\n"
+    card += f"💳 الحساب: <code>#{p.get('bank_account', '----')}</code>\n"
+    card += f"🎓 الرتبة: <b>{current_rank}</b>\n"
+    card += "<b>— — — — — — — — — — —</b>\n"
+    card += f"📈 <b>التقدم للرتبة ({next_rank_name}):</b>\n"
+    card += f"{progress_bar} {int(percentage)}%\n"
+    card += f"🎯 متبقي: <code>{target_pts - ans_count}</code> إجابة\n"
+    card += "<b>— — — — — — — — — — —</b>\n\n"
+    
+    card += "<b>🎖️ التخصصات العلمية:</b>\n"
+    card += specialties_list
     card += "<b>— — — — — — — — — — —</b>\n\n"
     
     card += f"💰 المحفظة: <code>{p.get('wallet', 0)}</code> \n"
     card += f"🧠 الذكاء: <code>{p.get('iq_score', 0)}% IQ</code>\n"
     card += f"🏆 الفوز: <code>{p.get('total_wins', 0)}</code> جولة\n"
-    card += f"✅ الإجابات: <code>{p.get('correct_answers_count', 0)}</code>\n"
+    card += f"✅ الإجمالي: <code>{ans_count}</code> إجابة\n"
     card += "<b>— — — — — — — — — — —</b>\n\n"
     
     card += "<b>🃏 مخزن الكروت الاستراتيجية:</b>\n"
     card += f"⏳ الوقت: [ <code>{cards.get('time_card', 0)}</code> ] | 👁️ الإجابة: [ <code>{cards.get('answer_card', 0)}</code> ]\n"
     card += "<b>— — — — — — — — — — —</b>\n"
 
-    # المقتنيات (Inventory)
-    inv = p.get('inventory', [])
-    if inv:
-        card += f"📦 المقتنيات: {' | '.join(inv) if isinstance(inv, list) else inv}\n"
-        card += "<b>— — — — — — — — — — —</b>\n"
-    
     return card
 
 # 1️⃣ دالة لوحة الأزرار (Keyboard)
