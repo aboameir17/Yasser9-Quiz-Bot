@@ -411,13 +411,14 @@ async def sync_points_to_global_db(group_scores, winners_list=None, cat_name="ع
                 if not stats: return "هاوي"
                 top_cat = max(stats, key=stats.get)
                 score = stats[top_cat]
-                if score > 500: return f"عالم {top_cat}"
-                elif score > 200: return f"خبير {top_cat}"
-                return f"محب لـ {top_cat}"
+                if score > 1000: return f"أسطورة {top_cat}"
+                elif score > 500: return f"عالم {top_cat}"
+                elif score > 100: return f"خبير {top_cat}"
+                else: return f"محب لـ {top_cat}"
 
             if res.data:
                 current = res.data[0]
-                
+            
                 # تحديث إحصائيات الأقسام
                 current_stats = current.get('category_stats') or {}
                 current_stats[cat_name] = current_stats.get(cat_name, 0) + data['ans_count']
